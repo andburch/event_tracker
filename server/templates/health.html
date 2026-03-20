@@ -1,0 +1,346 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Scraper Health Dashboard</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f0f2f5;
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+
+        header {
+            background: white;
+            padding: 16px 24px;
+            border-radius: 10px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 { font-size: 22px; color: #333; margin-bottom: 10px; }
+        .nav { display: flex; gap: 6px; flex-wrap: wrap; }
+        .nav a { display: inline-block; padding: 5px 14px; border-radius: 4px; font-size: 13px;
+                 font-weight: 500; text-decoration: none; background: #e3f2fd; color: #1976D2; }
+        .nav a:hover { background: #bbdefb; }
+        .nav a.active { background: #1976D2; color: white; }
+
+        .summary-bar {
+            display: flex;
+            gap: 12px;
+            margin-bottom: 24px;
+        }
+        .summary-card {
+            background: white;
+            border-radius: 8px;
+            padding: 14px 20px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            flex: 1;
+            text-align: center;
+        }
+        .summary-card .val { font-size: 28px; font-weight: 700; color: #333; }
+        .summary-card .val.green { color: #10b981; }
+        .summary-card .lbl { font-size: 12px; color: #888; margin-top: 2px; }
+
+        h2 {
+            font-size: 13px;
+            font-weight: 700;
+            color: #888;
+            margin-bottom: 12px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        .scraper-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(300px, 1fr));
+            gap: 12px;
+            margin-bottom: 28px;
+        }
+
+        /* Card backgrounds by status */
+        .scraper-card {
+            border-radius: 10px;
+            padding: 16px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+        }
+        .scraper-card.healthy  { background: #f0fdf4; border: 1px solid #bbf7d0; }
+        .scraper-card.warning  { background: #fffbeb; border: 1px solid #fde68a; }
+        .scraper-card.error    { background: #fef2f2; border: 1px solid #fecaca; }
+        .scraper-card.disabled { background: #f9fafb; border: 1px solid #e5e7eb; opacity: 0.75; }
+
+        .card-header {
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            margin-bottom: 14px;
+        }
+        .scraper-name { font-size: 15px; font-weight: 600; color: #1f2937; }
+        .badge {
+            font-size: 11px;
+            font-weight: 700;
+            text-transform: uppercase;
+            padding: 3px 9px;
+            border-radius: 20px;
+            letter-spacing: 0.4px;
+            white-space: nowrap;
+        }
+        .badge.healthy  { background: #d1fae5; color: #065f46; }
+        .badge.warning  { background: #fef3c7; color: #92400e; }
+        .badge.error    { background: #fee2e2; color: #991b1b; }
+        .badge.disabled { background: #f3f4f6; color: #6b7280; }
+
+        /* Yield comparison — last scrape and average stacked vertically */
+        .yield-block {
+            display: flex;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .yield-stack {
+            flex: 1;
+            background: rgba(255,255,255,0.6);
+            border-radius: 8px;
+            padding: 10px 14px;
+        }
+        .yield-stack .stack-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: baseline;
+            padding: 4px 0;
+        }
+        .yield-stack .stack-row + .stack-row {
+            border-top: 1px solid rgba(0,0,0,0.06);
+        }
+        .yield-stack .row-label {
+            font-size: 11px;
+            font-weight: 600;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            color: #888;
+        }
+        .yield-stack .row-num {
+            font-size: 28px;
+            font-weight: 800;
+            line-height: 1;
+        }
+        .yield-stack .row-num.good    { color: #059669; }
+        .yield-stack .row-num.low     { color: #d97706; }
+        .yield-stack .row-num.zero    { color: #dc2626; }
+        .yield-stack .row-num.neutral { color: #374151; }
+
+        .yield-side {
+            display: flex;
+            flex-direction: column;
+            gap: 10px;
+        }
+        .yield-side-box {
+            flex: 1;
+            background: rgba(255,255,255,0.6);
+            border-radius: 8px;
+            padding: 8px 14px;
+            text-align: center;
+        }
+        .yield-side-box .snum {
+            font-size: 24px;
+            font-weight: 800;
+            color: #374151;
+            line-height: 1;
+        }
+        .yield-side-box .slbl {
+            font-size: 11px;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.4px;
+            margin-top: 3px;
+        }
+
+        /* Meta row */
+        .meta-row {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px 20px;
+            font-size: 12px;
+            border-top: 1px solid rgba(0,0,0,0.06);
+            padding-top: 10px;
+        }
+        .meta-item .ml { color: #9ca3af; display: block; font-size: 11px; }
+        .meta-item .mv { font-weight: 600; color: #374151; }
+
+        .error-msg {
+            margin-top: 10px;
+            background: rgba(239,68,68,0.1);
+            border-radius: 5px;
+            padding: 8px 10px;
+            font-size: 12px;
+            color: #991b1b;
+        }
+
+        .footer-note {
+            text-align: center;
+            color: #aaa;
+            font-size: 12px;
+            margin-top: 8px;
+        }
+    </style>
+</head>
+<body>
+<div class="container">
+    <header>
+        <h1>🔧 Scraper Health</h1>
+        <nav class="nav">
+            <a href="/">List</a>
+            <a href="/calendar">Calendar</a>
+            <a href="/profile">Preferences</a>
+            <a href="/health" class="active">Scraper Health</a>
+        </nav>
+    </header>
+
+    <div class="summary-bar">
+        <div class="summary-card">
+            <div class="val">{{ total_events }}</div>
+            <div class="lbl">Total Events</div>
+        </div>
+        <div class="summary-card">
+            <div class="val">{{ total_future }}</div>
+            <div class="lbl">Future Events</div>
+        </div>
+        <div class="summary-card">
+            <div class="val">{{ active_scrapers|length }}</div>
+            <div class="lbl">Active Scrapers</div>
+        </div>
+        <div class="summary-card">
+            <div class="val green">{{ "%.0f"|format(overall_success_rate) }}%</div>
+            <div class="lbl">Success Rate (7d)</div>
+        </div>
+    </div>
+
+    <h2>Active Scrapers</h2>
+    <div class="scraper-grid">
+        {% for scraper in active_scrapers %}
+            {% set stats = scraper_stats.get(scraper, {}) %}
+            {% set events = event_stats.get(scraper, {'total': 0, 'future': 0}) %}
+
+            {% if stats.total_runs == 0 %}
+                {% set status = 'warning' %}{% set label = 'No Runs' %}
+            {% elif not stats.last_success %}
+                {% set status = 'error' %}{% set label = 'Error' %}
+            {% elif stats.last_events_found == 0 %}
+                {% set status = 'warning' %}{% set label = 'Empty' %}
+            {% elif stats.avg_events > 0 and stats.last_events_found < stats.avg_events * 0.5 %}
+                {% set status = 'warning' %}{% set label = 'Low Yield' %}
+            {% elif stats.success_rate >= 80 %}
+                {% set status = 'healthy' %}{% set label = 'Healthy' %}
+            {% elif stats.success_rate >= 50 %}
+                {% set status = 'warning' %}{% set label = 'Warning' %}
+            {% else %}
+                {% set status = 'error' %}{% set label = 'Error' %}
+            {% endif %}
+
+            {% if not stats.last_run %}
+                {% set yield_class = 'neutral' %}
+            {% elif stats.last_events_found == 0 %}
+                {% set yield_class = 'zero' %}
+            {% elif stats.avg_events > 0 and stats.last_events_found < stats.avg_events * 0.5 %}
+                {% set yield_class = 'low' %}
+            {% else %}
+                {% set yield_class = 'good' %}
+            {% endif %}
+
+        <div class="scraper-card {{ status }}">
+            <div class="card-header">
+                <div class="scraper-name">{{ source_names.get(scraper, scraper.replace('_',' ').title()) }}</div>
+                <span class="badge {{ status }}">{{ label }}</span>
+            </div>
+
+            <div class="yield-block">
+                <div class="yield-stack">
+                    <div class="stack-row">
+                        <span class="row-label">Last Scrape</span>
+                        <span class="row-num {{ yield_class }}">
+                            {% if stats.last_run %}{{ stats.last_events_found }}{% else %}—{% endif %}
+                        </span>
+                    </div>
+                    <div class="stack-row">
+                        <span class="row-label">Average</span>
+                        <span class="row-num neutral">{{ "%.0f"|format(stats.avg_events) }}</span>
+                    </div>
+                </div>
+                <div class="yield-side">
+                    <div class="yield-side-box">
+                        <div class="snum">{{ events.future }}</div>
+                        <div class="slbl">In DB</div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="meta-row">
+                <div class="meta-item">
+                    <span class="ml">Success Rate</span>
+                    <span class="mv">{{ "%.0f"|format(stats.success_rate) }}%</span>
+                </div>
+                <div class="meta-item">
+                    <span class="ml">Runs (7d)</span>
+                    <span class="mv">{{ stats.total_runs }}</span>
+                </div>
+                <div class="meta-item">
+                    <span class="ml">Avg Duration</span>
+                    <span class="mv">{{ "%.0f"|format(stats.avg_duration) }}s</span>
+                </div>
+                {% if stats.last_run %}
+                <div class="meta-item">
+                    <span class="ml">Last Run</span>
+                    <span class="mv">{{ stats.last_run.strftime('%m/%d %H:%M') }}</span>
+                </div>
+                {% endif %}
+            </div>
+
+            {% if stats.last_error %}
+            <div class="error-msg">{{ stats.last_error[:200] }}{% if stats.last_error|length > 200 %}…{% endif %}</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+
+    {% if disabled_scrapers %}
+    <h2>Disabled Scrapers</h2>
+    <div class="scraper-grid">
+        {% for scraper in disabled_scrapers %}
+            {% set stats = scraper_stats.get(scraper, {}) %}
+            {% set events = event_stats.get(scraper, {'total': 0, 'future': 0}) %}
+        <div class="scraper-card disabled">
+            <div class="card-header">
+                <div class="scraper-name">{{ source_names.get(scraper, scraper.replace('_',' ').title()) }}</div>
+                <span class="badge disabled">Disabled</span>
+            </div>
+            <div class="meta-row">
+                <div class="meta-item">
+                    <span class="ml">Future Events</span>
+                    <span class="mv">{{ events.future }}</span>
+                </div>
+                <div class="meta-item">
+                    <span class="ml">Total in DB</span>
+                    <span class="mv">{{ events.total }}</span>
+                </div>
+                {% if stats.last_run %}
+                <div class="meta-item">
+                    <span class="ml">Last Attempt</span>
+                    <span class="mv">{{ stats.last_run.strftime('%m/%d') }}</span>
+                </div>
+                {% endif %}
+            </div>
+            {% if stats.last_error %}
+            <div class="error-msg">{{ stats.last_error[:200] }}</div>
+            {% endif %}
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
+    <div class="footer-note">Updated {{ current_time.strftime('%Y-%m-%d %H:%M:%S') }} · Showing last 7 days</div>
+</div>
+</body>
+</html>

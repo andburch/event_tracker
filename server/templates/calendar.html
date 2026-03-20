@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Phoenix Events – Calendar</title>
+    <style>
+        * { box-sizing: border-box; }
+        body { font-family: Arial, sans-serif; max-width: 100%; margin: 0 auto; padding: 20px; background: #f5f5f5; }
+        .header { background: white; padding: 20px; border-radius: 8px; margin-bottom: 16px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .header h1 { margin: 0 0 6px 0; color: #333; }
+        .header p { margin: 0; color: #666; }
+        .header a { color: #2196F3; text-decoration: none; }
+        .nav { margin-top: 10px; display: flex; gap: 6px; flex-wrap: wrap; }
+        .nav a { display: inline-block; padding: 5px 14px; border-radius: 4px; font-size: 13px;
+                 font-weight: 500; text-decoration: none; background: #e3f2fd; color: #1976D2; }
+        .nav a:hover { background: #bbdefb; }
+        .nav a.active { background: #1976D2; color: white; }
+
+        /* Controls bar */
+        .controls { background: white; padding: 14px 20px; border-radius: 8px; margin-bottom: 16px;
+                    box-shadow: 0 2px 4px rgba(0,0,0,0.1); display: flex; align-items: center;
+                    gap: 16px; flex-wrap: wrap; }
+        .month-nav { display: flex; align-items: center; gap: 10px; }
+        .month-nav a { padding: 6px 14px; background: #e3f2fd; color: #1976D2; border-radius: 4px;
+                       text-decoration: none; font-weight: 600; font-size: 14px; }
+        .month-nav a:hover { background: #bbdefb; }
+        .month-title { font-size: 20px; font-weight: 700; color: #333; min-width: 160px; text-align: center; }
+        .source-filter { display: flex; align-items: flex-start; gap: 10px; margin-left: auto; }
+        .source-multiselect { display: flex; flex-direction: column; gap: 4px; }
+        .source-multiselect-actions { display: flex; align-items: center; gap: 6px; }
+        .source-multiselect-actions button { padding: 2px 8px; font-size: 12px; border: 1px solid #ddd;
+                                             border-radius: 3px; cursor: pointer; background: #f5f5f5; color: #444; }
+        .source-multiselect-actions button:hover { background: #e0e0e0; }
+        .source-checkboxes { display: flex; flex-direction: column; gap: 3px; max-height: 160px;
+                             overflow-y: auto; padding: 6px 8px; background: #f9f9f9;
+                             border: 1px solid #ddd; border-radius: 4px; min-width: 190px; }
+        .checkbox-item { display: flex; align-items: center; gap: 5px; }
+        .checkbox-item input { cursor: pointer; }
+        .checkbox-item label { font-size: 12px; color: #333; margin: 0; cursor: pointer; white-space: nowrap; }
+        .filter-btn { padding: 6px 14px; background: #2196F3; color: white; border: none;
+                      border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; align-self: flex-end; }
+        .filter-btn:hover { background: #1976D2; }
+        .event-count { font-size: 13px; color: #888; }
+
+        /* Legend */
+        .legend { background: white; padding: 12px 20px; border-radius: 8px; margin-bottom: 16px;
+                  box-shadow: 0 2px 4px rgba(0,0,0,0.1); }
+        .legend-title { font-size: 12px; font-weight: 700; color: #888; text-transform: uppercase;
+                        letter-spacing: 0.05em; margin-bottom: 8px; }
+        .legend-items { display: flex; flex-wrap: wrap; gap: 6px; }
+        .legend-item { display: flex; align-items: center; gap: 5px; font-size: 12px; color: #444;
+                       padding: 3px 8px; border-radius: 3px; border-left: 3px solid; cursor: default; }
+
+        .calendar { background: white; border-radius: 8px; box-shadow: 0 2px 4px rgba(0,0,0,0.1); overflow: hidden; min-width: 0; }
+        .day-headers { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); }
+        .day-header { padding: 10px; text-align: center; font-weight: 700; font-size: 13px;
+                      color: #555; background: #f0f4f8; border-bottom: 1px solid #e0e0e0; }
+        .day-header.weekend { color: #e53935; }
+        .weeks { display: flex; flex-direction: column; }
+        .week { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); border-bottom: 1px solid #e8e8e8; }
+        .week:last-child { border-bottom: none; }
+        .day { min-height: 110px; padding: 6px; border-right: 1px solid #e8e8e8; }
+        .day:last-child { border-right: none; }
+        .day.empty { background: #fafafa; }
+        .day.today { background: #fffde7; }
+        .day-num { font-size: 13px; font-weight: 700; color: #555; margin-bottom: 4px; }
+        .day.today .day-num { background: #2196F3; color: white; border-radius: 50%;
+                               width: 22px; height: 22px; display: flex; align-items: center;
+                               justify-content: center; font-size: 12px; }
+
+        .event-chip { font-size: 11px; padding: 2px 5px; border-radius: 3px; margin-bottom: 2px;
+                      white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+                      cursor: pointer; border-left: 3px solid; display: block; max-width: 100%; }
+        .event-chip:hover { filter: brightness(0.9); }
+        .more-chip { font-size: 11px; color: #888; padding: 2px 4px; cursor: pointer; }
+        .more-chip:hover { color: #333; }
+
+        /* Modals */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.45);
+                         z-index: 1000; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal { background: white; border-radius: 10px; padding: 28px; max-width: 520px; width: 90%;
+                 max-height: 80vh; overflow-y: auto; box-shadow: 0 8px 32px rgba(0,0,0,0.2); position: relative; }
+        .modal-close { position: absolute; top: 14px; right: 18px; font-size: 22px; cursor: pointer;
+                       color: #888; background: none; border: none; line-height: 1; }
+        .modal-close:hover { color: #333; }
+        .modal h2 { margin: 0 0 12px 0; color: #222; font-size: 18px; padding-right: 24px; }
+        .modal-meta { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 14px; }
+        .badge { display: inline-block; padding: 4px 10px; border-radius: 4px; font-size: 12px; font-weight: 600; }
+        .badge-date { background: #fff3e0; color: #f57c00; }
+        .badge-venue { background: #f3e5f5; color: #7b1fa2; }
+        .modal-desc { color: #555; line-height: 1.6; font-size: 14px; margin-bottom: 16px; }
+        .modal-link { display: inline-block; color: #2196F3; text-decoration: none; font-weight: 600;
+                      font-size: 14px; margin-bottom: 16px; }
+        .modal-link:hover { text-decoration: underline; }
+        .modal-buttons { display: flex; gap: 10px; flex-wrap: wrap; }
+        .modal-buttons button { padding: 9px 20px; border: none; border-radius: 4px; cursor: pointer;
+                                font-size: 14px; font-weight: 600; }
+        .btn-back { background: #e0e0e0; color: #333; margin-right: auto; }
+        .btn-back:hover { background: #bdbdbd; }
+        .btn-interested { background: #4CAF50; color: white; }
+        .btn-interested:hover { background: #43a047; }
+        .btn-not-interested { background: #f44336; color: white; }
+        .btn-not-interested:hover { background: #e53935; }
+
+        /* Day modal list */
+        .day-event-item { padding: 10px 0; border-bottom: 1px solid #eee; display: flex; gap: 10px; align-items: flex-start; }
+        .day-event-item:last-child { border-bottom: none; }
+        .day-event-dot { width: 10px; height: 10px; border-radius: 50%; flex-shrink: 0; margin-top: 4px; }
+        .day-event-body h4 { margin: 0 0 3px 0; color: #222; font-size: 14px; cursor: pointer; }
+        .day-event-body h4:hover { color: #2196F3; }
+        .day-event-body .meta { font-size: 12px; color: #888; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <h1>Phoenix Valley Events</h1>
+        <nav class="nav">
+            <a href="/">List</a>
+            <a href="/calendar" class="active">Calendar</a>
+            <a href="/profile">Preferences</a>
+            <a href="/health">Scraper Health</a>
+        </nav>
+    </div>
+
+    <div class="controls">
+        <div class="month-nav">
+            <a href="#" onclick="navMonth({{ prev_year }}, {{ prev_month }}); return false;">&#8249; Prev</a>
+            <span class="month-title">{{ month_name }} {{ year }}</span>
+            <a href="#" onclick="navMonth({{ next_year }}, {{ next_month }}); return false;">Next &#8250;</a>
+        </div>
+        <span class="event-count">{{ total_events }} event{% if total_events != 1 %}s{% endif %} this month</span>
+        <form class="source-filter" method="GET" action="/calendar">
+            <input type="hidden" name="year" value="{{ year }}">
+            <input type="hidden" name="month" value="{{ month }}">
+            <div class="source-multiselect">
+                <div class="source-multiselect-actions">
+                    <span style="font-size:13px;font-weight:500;color:#666;">Sources</span>
+                    <button type="button" onclick="calSelectAll()">Select All</button>
+                    <button type="button" onclick="calClearAll()">Clear All</button>
+                </div>
+                <div class="source-checkboxes" id="cal-source-boxes">
+                    {% for src in sources %}
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="cal-src-{{ src }}" name="sources" value="{{ src }}"
+                               {% if not selected_sources or src in selected_sources %}checked{% endif %}>
+                        <label for="cal-src-{{ src }}">{{ source_names.get(src, src.replace('_',' ').title()) }}</label>
+                    </div>
+                    {% endfor %}
+                </div>
+            </div>
+            <button type="submit" class="filter-btn">Apply</button>
+        </form>
+    </div>
+
+    {% if not selected_sources or selected_sources|length == sources|length %}
+    <div class="legend">
+        <div class="legend-title">Sources</div>
+        <div class="legend-items">
+            {% for src in sources %}
+            {% set colors = source_colors.get(src, ('#e3f2fd', '#2196F3', '#1565C0')) %}
+            <div class="legend-item" style="background:{{ colors[0] }}; border-color:{{ colors[1] }}; color:{{ colors[2] }};">
+                {{ source_names.get(src, src.replace('_',' ').title()) }}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+    {% endif %}
+
+    <div class="calendar">
+        <div class="day-headers">
+            <div class="day-header weekend">Sun</div>
+            <div class="day-header">Mon</div>
+            <div class="day-header">Tue</div>
+            <div class="day-header">Wed</div>
+            <div class="day-header">Thu</div>
+            <div class="day-header">Fri</div>
+            <div class="day-header weekend">Sat</div>
+        </div>
+        <div class="weeks">
+            {% for week in cal %}
+            <div class="week">
+                {% for day_num in week %}
+                {% if day_num == 0 %}
+                <div class="day empty"></div>
+                {% else %}
+                {% set is_today = (year == today.year and month == today.month and day_num == today.day) %}
+                <div class="day {% if is_today %}today{% endif %}">
+                    <div class="day-num">{{ day_num }}</div>
+                    {% set day_events = events_by_day.get(day_num, []) %}
+                    {% for ev in day_events[:3] %}
+                    {% set colors = source_colors.get(ev.source, ('#e3f2fd', '#2196F3', '#1565C0')) %}
+                    <div class="event-chip"
+                         style="background:{{ colors[0] }}; border-color:{{ colors[1] }}; color:{{ colors[2] }};"
+                         onclick="openEvent({{ ev.id }}, null)">
+                        {{ ev.date.strftime('%I:%M%p').lstrip('0') }} {{ ev.title[:26] }}{% if ev.title|length > 26 %}…{% endif %}
+                    </div>
+                    {% endfor %}
+                    {% if day_events|length > 3 %}
+                    <div class="more-chip" onclick="openDay({{ day_num }}, {{ year }}, {{ month }})">
+                        +{{ day_events|length - 3 }} more
+                    </div>
+                    {% endif %}
+                </div>
+                {% endif %}
+                {% endfor %}
+            </div>
+            {% endfor %}
+        </div>
+    </div>
+
+    <!-- Single event modal -->
+    <div class="modal-overlay" id="event-modal">
+        <div class="modal">
+            <button class="modal-close" onclick="closeModal('event-modal')">&times;</button>
+            <h2 id="modal-title"></h2>
+            <div class="modal-meta">
+                <span class="badge badge-date" id="modal-date"></span>
+                <span class="badge" id="modal-source"></span>
+                <span class="badge badge-venue" id="modal-venue"></span>
+            </div>
+            <p class="modal-desc" id="modal-desc"></p>
+            <a class="modal-link" id="modal-link" href="#" target="_blank">View Details →</a>
+            <div class="modal-buttons">
+                <button class="btn-back" id="modal-back" style="display:none" onclick="backToDay()">← Back</button>
+                <button class="btn-interested" id="modal-interested">👍 Interested</button>
+                <button class="btn-not-interested" id="modal-not-interested">👎 Not Interested</button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Day events modal -->
+    <div class="modal-overlay" id="day-modal">
+        <div class="modal">
+            <button class="modal-close" onclick="closeModal('day-modal')">&times;</button>
+            <h2 id="day-modal-title"></h2>
+            <div id="day-modal-events"></div>
+        </div>
+    </div>
+
+    <script>
+        function calSelectAll() {
+            document.querySelectorAll('#cal-source-boxes input[type="checkbox"]').forEach(cb => cb.checked = true);
+        }
+        function calClearAll() {
+            document.querySelectorAll('#cal-source-boxes input[type="checkbox"]').forEach(cb => cb.checked = false);
+        }
+        function navMonth(year, month) {
+            // Submit the filter form with updated year/month
+            const form = document.querySelector('.source-filter');
+            form.querySelector('[name="year"]').value = year;
+            form.querySelector('[name="month"]').value = month;
+            form.submit();
+        }
+
+        const SOURCE_COLORS = {
+            {% for src, colors in source_colors.items() %}
+            {{ src | tojson }}: { bg: {{ colors[0] | tojson }}, border: {{ colors[1] | tojson }}, text: {{ colors[2] | tojson }} },
+            {% endfor %}
+        };
+        const DEFAULT_COLOR = { bg: '#e3f2fd', border: '#2196F3', text: '#1565C0' };
+
+        function getColor(sourceKey) {
+            return SOURCE_COLORS[sourceKey] || DEFAULT_COLOR;
+        }
+
+        const ALL_EVENTS = {
+            {% for day_num, evs in events_by_day.items() %}
+            {% for ev in evs %}
+            {{ ev.id }}: {
+                id: {{ ev.id }},
+                title: {{ ev.title | tojson }},
+                date: {{ ev.date.strftime('%b %d, %Y at %I:%M %p') | tojson }},
+                sourceKey: {{ ev.source | tojson }},
+                source: {{ source_names.get(ev.source, ev.source) | tojson }},
+                venue: {{ ev.venue | tojson }},
+                desc: {{ (ev.description[:400] if ev.description else '') | tojson }},
+                url: {{ ev.url | tojson }},
+                day: {{ day_num }}
+            },
+            {% endfor %}
+            {% endfor %}
+        };
+
+        const DAY_EVENTS = {
+            {% for day_num, evs in events_by_day.items() %}
+            {{ day_num }}: [{% for ev in evs %}{{ ev.id }},{% endfor %}],
+            {% endfor %}
+        };
+
+        let _currentDayNum = null;  // tracks which day modal we came from
+
+        function openEvent(id, fromDay) {
+            const ev = ALL_EVENTS[id];
+            if (!ev) return;
+            const c = getColor(ev.sourceKey);
+            document.getElementById('modal-title').textContent = ev.title;
+            document.getElementById('modal-date').textContent = ev.date;
+            const srcBadge = document.getElementById('modal-source');
+            srcBadge.textContent = ev.source;
+            srcBadge.style.background = c.bg;
+            srcBadge.style.color = c.text;
+            srcBadge.style.borderLeft = '3px solid ' + c.border;
+            document.getElementById('modal-venue').textContent = ev.venue;
+            document.getElementById('modal-desc').textContent = ev.desc || 'No description available.';
+            document.getElementById('modal-link').href = ev.url;
+            document.getElementById('modal-interested').onclick = () => sendFeedback(id, true);
+            document.getElementById('modal-not-interested').onclick = () => sendFeedback(id, false);
+
+            // Show back button only when opened from a day list
+            _currentDayNum = fromDay || null;
+            document.getElementById('modal-back').style.display = _currentDayNum ? 'inline-block' : 'none';
+
+            document.getElementById('event-modal').classList.add('open');
+        }
+
+        function backToDay() {
+            closeModal('event-modal');
+            if (_currentDayNum !== null) {
+                openDay(_currentDayNum, {{ year }}, {{ month }});
+            }
+        }
+
+        function openDay(dayNum, year, month) {
+            const ids = DAY_EVENTS[dayNum] || [];
+            const monthNames = ['','January','February','March','April','May','June',
+                                'July','August','September','October','November','December'];
+            document.getElementById('day-modal-title').textContent =
+                monthNames[month] + ' ' + dayNum + ', ' + year;
+            const container = document.getElementById('day-modal-events');
+            container.innerHTML = '';
+            ids.forEach(id => {
+                const ev = ALL_EVENTS[id];
+                if (!ev) return;
+                const c = getColor(ev.sourceKey);
+                const div = document.createElement('div');
+                div.className = 'day-event-item';
+                div.innerHTML = `
+                    <div class="day-event-dot" style="background:${c.border}"></div>
+                    <div class="day-event-body">
+                        <h4 onclick="switchToEvent(${id}, ${dayNum})">${ev.title}</h4>
+                        <span class="meta">${ev.date} &nbsp;·&nbsp; ${ev.source}</span>
+                    </div>`;
+                container.appendChild(div);
+            });
+            document.getElementById('day-modal').classList.add('open');
+        }
+
+        function switchToEvent(id, dayNum) {
+            closeModal('day-modal');
+            openEvent(id, dayNum);
+        }
+
+        function closeModal(id) {
+            document.getElementById(id).classList.remove('open');
+        }
+
+        document.querySelectorAll('.modal-overlay').forEach(overlay => {
+            overlay.addEventListener('click', e => {
+                if (e.target === overlay) overlay.classList.remove('open');
+            });
+        });
+
+        function sendFeedback(eventId, interested) {
+            fetch('/feedback', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({event_id: eventId, interested: interested})
+            }).then(() => {
+                closeModal('event-modal');
+                alert('Feedback recorded!');
+            });
+        }
+    </script>
+</body>
+</html>

@@ -1,0 +1,6 @@
+*.pyc
+__pycache__/
+.env
+events.db
+venv/
+.vscode/
