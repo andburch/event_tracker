@@ -84,6 +84,12 @@ def index():
 
     events = query.all()
 
+    # Pinned events (shortlist) — always shown regardless of filters
+    pinned_events = session.query(Event).filter(
+        Event.pinned == True,
+        Event.date >= datetime.now(),
+    ).order_by(Event.date).all()
+
     # Build source list sorted alphabetically by display name for the filter dropdown
     raw_sources = [s[0] for s in session.query(Event.source).distinct().all()]
     sources = sorted(raw_sources, key=lambda s: SOURCE_NAMES.get(s, s))
@@ -100,6 +106,7 @@ def index():
     return render_template(
         'index.html',
         events=scored_events,
+        pinned_events=pinned_events,
         sources=sources,
         source_names=SOURCE_NAMES,
         selected_sources=selected_sources,
@@ -296,6 +303,8 @@ def calendar_view():
         events_by_day.setdefault(ev.date.day, []).append(ev)
 
     # calendar.monthcalendar returns a list of weeks; each week is 7 ints (0 = padding)
+    # setfirstweekday(6) = Sunday, matching the Sun-Mon-...-Sat column headers in the template
+    calendar.setfirstweekday(6)
     cal = calendar.monthcalendar(year, month)
 
     # Compute prev/next month for navigation links
@@ -372,6 +381,37 @@ def profile():
         recent_feedback=recent_feedback,
         profile_history=profile_history,
     )
+
+
+@app.route('/pin', methods=['POST'])
+def pin():
+    """Toggle the pinned/shortlist status of an event. Expects JSON: {"event_id": <int>}"""
+    event_id = request.json.get('event_id')
+    session  = Session()
+    event    = session.query(Event).get(event_id)
+    if not event:
+        session.close()
+        return jsonify({'status': 'error', 'message': 'Event not found'}), 404
+    event.pinned = not event.pinned
+    session.commit()
+    pinned = event.pinned
+    session.close()
+    return jsonify({'status': 'success', 'pinned': pinned})
+
+
+@app.route('/profile/summary', methods=['POST'])
+def profile_summary():
+    """Save a manually-edited preference_summary."""
+    summary = request.form.get('preference_summary', '').strip()
+    session = Session()
+    profile_row = session.query(UserProfile).first()
+    if not profile_row:
+        profile_row = UserProfile()
+        session.add(profile_row)
+    profile_row.preference_summary = summary
+    session.commit()
+    session.close()
+    return redirect('/profile')
 
 
 if __name__ == '__main__':

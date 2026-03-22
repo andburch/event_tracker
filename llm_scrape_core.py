@@ -207,7 +207,10 @@ def _ask_llm_single(text, current_url, site_hint='', is_last_chunk=True, retries
         "   Each event: title, date (e.g. 'March 22, 2026'), time (e.g. '8:00 PM' or null),\n"
         "   description (or null), venue (or null), url (full absolute URL to the event detail\n"
         "   page -- look for links on the event title or a 'More Info'/'Details' link; null if\n"
-        "   no individual event page exists).\n\n"
+        "   no individual event page exists).\n"
+        "   IMPORTANT: Times often appear on a separate line after the date, or in formats like\n"
+        "   'Mar 20 @ 9:00 am - 5:00 pm' or '9:00 am - 4:00 pm' on the next line after the date.\n"
+        "   Always capture the start time if present. Use 12-hour format e.g. '9:00 AM'.\n\n"
         + pagination_instruction
         + f"PAGE TEXT:\n{text}"
     )

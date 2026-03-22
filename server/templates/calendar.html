@@ -101,6 +101,10 @@
         .btn-interested:hover { background: #43a047; }
         .btn-not-interested { background: #f44336; color: white; }
         .btn-not-interested:hover { background: #e53935; }
+        .btn-pin { background: #fff8e1; color: #f57f17; border: 1px solid #ffe082 !important; }
+        .btn-pin:hover { background: #ffecb3; }
+        .btn-pin.pinned { background: #ffe082; color: #e65100; }
+        .event-chip.pinned-chip { outline: 2px solid #f9a825; }
 
         /* Day modal list */
         .day-event-item { padding: 10px 0; border-bottom: 1px solid #eee; display: flex; gap: 10px; align-items: flex-start; }
@@ -189,10 +193,11 @@
                     {% set day_events = events_by_day.get(day_num, []) %}
                     {% for ev in day_events[:3] %}
                     {% set colors = source_colors.get(ev.source, ('#e3f2fd', '#2196F3', '#1565C0')) %}
-                    <div class="event-chip"
+                    <div class="event-chip {% if ev.pinned %}pinned-chip{% endif %}"
+                         id="chip-{{ ev.id }}"
                          style="background:{{ colors[0] }}; border-color:{{ colors[1] }}; color:{{ colors[2] }};"
                          onclick="openEvent({{ ev.id }}, null)">
-                        {{ ev.date.strftime('%I:%M%p').lstrip('0') }} {{ ev.title[:26] }}{% if ev.title|length > 26 %}…{% endif %}
+                        {% if ev.pinned %}📌 {% endif %}{{ ev.date.strftime('%I:%M%p').lstrip('0') }} {{ ev.title[:26] }}{% if ev.title|length > 26 %}…{% endif %}
                     </div>
                     {% endfor %}
                     {% if day_events|length > 3 %}
@@ -224,6 +229,7 @@
                 <button class="btn-back" id="modal-back" style="display:none" onclick="backToDay()">← Back</button>
                 <button class="btn-interested" id="modal-interested">👍 Interested</button>
                 <button class="btn-not-interested" id="modal-not-interested">👎 Not Interested</button>
+                <button class="btn-pin" id="modal-pin" onclick="togglePin()">📌 Add to Short List</button>
             </div>
         </div>
     </div>
@@ -275,7 +281,8 @@
                 venue: {{ ev.venue | tojson }},
                 desc: {{ (ev.description[:400] if ev.description else '') | tojson }},
                 url: {{ ev.url | tojson }},
-                day: {{ day_num }}
+                day: {{ day_num }},
+                pinned: {{ 'true' if ev.pinned else 'false' }}
             },
             {% endfor %}
             {% endfor %}
@@ -288,10 +295,23 @@
         };
 
         let _currentDayNum = null;  // tracks which day modal we came from
+        let _currentEventId = null; // tracks which event is open in the modal
+
+        function _updatePinButton(pinned) {
+            const btn = document.getElementById('modal-pin');
+            if (pinned) {
+                btn.textContent = '📌 On Short List';
+                btn.classList.add('pinned');
+            } else {
+                btn.textContent = '📌 Add to Short List';
+                btn.classList.remove('pinned');
+            }
+        }
 
         function openEvent(id, fromDay) {
             const ev = ALL_EVENTS[id];
             if (!ev) return;
+            _currentEventId = id;
             const c = getColor(ev.sourceKey);
             document.getElementById('modal-title').textContent = ev.title;
             document.getElementById('modal-date').textContent = ev.date;
@@ -305,12 +325,27 @@
             document.getElementById('modal-link').href = ev.url;
             document.getElementById('modal-interested').onclick = () => sendFeedback(id, true);
             document.getElementById('modal-not-interested').onclick = () => sendFeedback(id, false);
+            _updatePinButton(ev.pinned);
 
             // Show back button only when opened from a day list
             _currentDayNum = fromDay || null;
             document.getElementById('modal-back').style.display = _currentDayNum ? 'inline-block' : 'none';
 
             document.getElementById('event-modal').classList.add('open');
+        }
+
+        function togglePin() {
+            if (_currentEventId === null) return;
+            fetch('/pin', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({event_id: _currentEventId})
+            })
+            .then(r => r.json())
+            .then(data => {
+                // Reload so the shortlist stays in sync with the list view
+                window.location.reload();
+            });
         }
 
         function backToDay() {

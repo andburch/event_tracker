@@ -21,8 +21,6 @@
         .filter, input[type="date"] { padding: 8px 12px; font-size: 14px; border: 1px solid #ddd; border-radius: 4px; }
         .filter { min-width: 150px; }
         input[type="date"] { min-width: 140px; }
-
-        /* Multi-select source panel */
         .source-panel { display: flex; flex-direction: column; min-width: 220px; }
         .source-panel label { font-size: 14px; color: #666; margin-bottom: 5px; font-weight: 500; }
         .source-panel-actions { display: flex; gap: 6px; margin-bottom: 6px; }
@@ -35,14 +33,35 @@
         .checkbox-item { display: flex; align-items: center; gap: 6px; }
         .checkbox-item input[type="checkbox"] { cursor: pointer; }
         .checkbox-item label { font-size: 13px; color: #333; font-weight: normal; margin: 0; cursor: pointer; white-space: nowrap; }
-
         .apply-btn { padding: 8px 20px; background: #2196F3; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; }
         .apply-btn:hover { background: #1976D2; }
         .clear-btn { padding: 8px 20px; background: #757575; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 14px; font-weight: 500; }
         .clear-btn:hover { background: #616161; }
         .event-count { color: #666; font-size: 14px; margin-bottom: 15px; }
-        .event { background: white; border: 1px solid #e0e0e0; padding: 20px; margin: 15px 0; border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
-        .event h3 { margin-top: 0; color: #333; }
+
+        /* Shortlist section */
+        .shortlist-section { background: #fffde7; border: 2px solid #f9a825; border-radius: 8px;
+                             padding: 20px; margin-bottom: 24px; box-shadow: 0 2px 6px rgba(249,168,37,0.15); }
+        .shortlist-section h2 { margin: 0 0 4px 0; color: #f57f17; font-size: 18px; }
+        .shortlist-section .shortlist-subtitle { color: #a67c00; font-size: 13px; margin-bottom: 16px; }
+        .shortlist-empty { color: #bfa000; font-style: italic; font-size: 14px; }
+        .shortlist-event { background: white; border: 1px solid #ffe082; border-radius: 6px;
+                           padding: 14px 16px; margin-bottom: 10px; display: flex;
+                           justify-content: space-between; align-items: flex-start; gap: 12px; }
+        .shortlist-event:last-child { margin-bottom: 0; }
+        .shortlist-event-body { flex: 1; }
+        .shortlist-event-title { font-weight: 600; color: #333; font-size: 15px; margin-bottom: 4px; }
+        .shortlist-event-meta { display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        .shortlist-unpin { flex-shrink: 0; padding: 5px 12px; background: #fff8e1; border: 1px solid #ffe082;
+                           border-radius: 4px; cursor: pointer; font-size: 13px; color: #a67c00;
+                           font-weight: 500; white-space: nowrap; }
+        .shortlist-unpin:hover { background: #ffecb3; }
+
+        /* Event cards */
+        .event { background: white; border: 1px solid #e0e0e0; padding: 20px; margin: 15px 0;
+                 border-radius: 8px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); position: relative; }
+        .event.is-pinned { border-color: #f9a825; box-shadow: 0 2px 8px rgba(249,168,37,0.25); }
+        .event h3 { margin-top: 0; color: #333; padding-right: 40px; }
         .event-meta { display: flex; gap: 10px; align-items: center; margin-bottom: 10px; flex-wrap: wrap; }
         .score { color: #4CAF50; font-size: 0.9em; font-weight: 600; }
         .source { display: inline-block; background: #e3f2fd; color: #1976D2; padding: 4px 10px; border-radius: 4px; font-size: 0.85em; font-weight: 500; }
@@ -51,11 +70,16 @@
         .event p { color: #555; line-height: 1.6; margin: 10px 0; }
         .event a { color: #2196F3; text-decoration: none; font-weight: 500; }
         .event a:hover { text-decoration: underline; }
-        .buttons { margin-top: 15px; }
-        button.interested { padding: 10px 20px; margin-right: 10px; cursor: pointer; border: none; border-radius: 4px; font-size: 14px; font-weight: 500; background: #4CAF50; color: white; }
+        .buttons { margin-top: 15px; display: flex; gap: 8px; flex-wrap: wrap; align-items: center; }
+        button.interested { padding: 10px 20px; cursor: pointer; border: none; border-radius: 4px; font-size: 14px; font-weight: 500; background: #4CAF50; color: white; }
         button.interested:hover { background: #45a049; }
-        button.not-interested { padding: 10px 20px; margin-right: 10px; cursor: pointer; border: none; border-radius: 4px; font-size: 14px; font-weight: 500; background: #f44336; color: white; }
+        button.not-interested { padding: 10px 20px; cursor: pointer; border: none; border-radius: 4px; font-size: 14px; font-weight: 500; background: #f44336; color: white; }
         button.not-interested:hover { background: #da190b; }
+        button.pin-btn { padding: 10px 16px; cursor: pointer; border-radius: 4px; font-size: 14px;
+                         font-weight: 500; border: 1px solid #ddd; background: #fff; color: #888;
+                         transition: all 0.15s; }
+        button.pin-btn:hover { border-color: #f9a825; color: #f9a825; background: #fffde7; }
+        button.pin-btn.pinned { background: #fff8e1; border-color: #f9a825; color: #f57f17; }
     </style>
 </head>
 <body>
@@ -69,10 +93,32 @@
         </nav>
     </div>
 
+    <!-- Short List -->
+    {% if pinned_events %}
+    <div class="shortlist-section">
+        <h2>📌 My Short List</h2>
+        <p class="shortlist-subtitle">{{ pinned_events|length }} event{% if pinned_events|length != 1 %}s{% endif %} you're planning to attend</p>
+        {% for event in pinned_events %}
+        <div class="shortlist-event" id="shortlist-{{ event.id }}">
+            <div class="shortlist-event-body">
+                <div class="shortlist-event-title">{{ event.title }}</div>
+                <div class="shortlist-event-meta">
+                    <span class="date-badge">{{ event.date.strftime('%b %d, %Y at %I:%M %p') }}</span>
+                    <span class="source">{{ source_names.get(event.source, event.source.replace('_', ' ').title()) }}</span>
+                    {% if event.price %}<span class="price-badge">{{ event.price }}</span>{% endif %}
+                    {% if event.venue %}<span style="font-size:13px;color:#888;">📍 {{ event.venue }}</span>{% endif %}
+                    {% if event.url %}<a href="{{ event.url }}" target="_blank" style="font-size:13px;">View →</a>{% endif %}
+                </div>
+            </div>
+            <button class="shortlist-unpin" onclick="togglePin({{ event.id }})">✕ Remove</button>
+        </div>
+        {% endfor %}
+    </div>
+    {% endif %}
+
     <div class="filters">
         <form method="GET" action="/" id="filter-form">
             <div class="filter-row">
-
                 <div class="source-panel">
                     <label>Sources</label>
                     <div class="source-panel-actions">
@@ -89,17 +135,14 @@
                         {% endfor %}
                     </div>
                 </div>
-
                 <div class="filter-group">
                     <label for="start-date">Start Date</label>
                     <input type="date" id="start-date" name="start_date" value="{{ start_date }}">
                 </div>
-
                 <div class="filter-group">
                     <label for="end-date">End Date</label>
                     <input type="date" id="end-date" name="end_date" value="{{ end_date }}">
                 </div>
-
                 <div class="filter-group">
                     <label for="sort-by">Sort By</label>
                     <select id="sort-by" name="sort" class="filter">
@@ -107,7 +150,6 @@
                         <option value="score" {% if sort_by == 'score' %}selected{% endif %}>Relevance Score</option>
                     </select>
                 </div>
-
                 <div class="filter-group" style="justify-content: flex-end; gap: 8px;">
                     <label>&nbsp;</label>
                     <button type="submit" class="apply-btn">Apply</button>
@@ -120,7 +162,7 @@
     <div class="event-count">Showing {{ events|length }} event{% if events|length != 1 %}s{% endif %}</div>
 
     {% for event, score in events %}
-    <div class="event">
+    <div class="event {% if event.pinned %}is-pinned{% endif %}" id="event-{{ event.id }}">
         <h3>{{ event.title }}</h3>
         <div class="event-meta">
             <span class="score">Match: {{ "%.0f"|format(score * 100) }}%</span>
@@ -135,6 +177,11 @@
         <div class="buttons">
             <button class="interested" onclick="sendFeedback({{ event.id }}, true)">👍 Interested</button>
             <button class="not-interested" onclick="sendFeedback({{ event.id }}, false)">👎 Not Interested</button>
+            <button class="pin-btn {% if event.pinned %}pinned{% endif %}"
+                    id="pin-btn-{{ event.id }}"
+                    onclick="togglePin({{ event.id }})">
+                {% if event.pinned %}📌 On Short List{% else %}📌 Add to Short List{% endif %}
+            </button>
         </div>
     </div>
     {% endfor %}
@@ -158,6 +205,18 @@
                 headers: {'Content-Type': 'application/json'},
                 body: JSON.stringify({event_id: eventId, interested: interested})
             }).then(() => alert('Feedback recorded!'));
+        }
+        function togglePin(eventId) {
+            fetch('/pin', {
+                method: 'POST',
+                headers: {'Content-Type': 'application/json'},
+                body: JSON.stringify({event_id: eventId})
+            })
+            .then(r => r.json())
+            .then(data => {
+                // Reload so the shortlist section updates cleanly
+                window.location.reload();
+            });
         }
     </script>
 </body>

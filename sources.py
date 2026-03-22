@@ -146,6 +146,32 @@ SITES = {
         False, 0, 1, 'static HTML -- no per-event URLs',
         ('#fef9c3', '#b45309', '#78350f'),
     ),
+
+    # --- Previously disabled venues (now using LLM scraper) ---
+    'kidsoutandabout': (
+        'Kids Out and About',
+        'https://www.kidsoutandabout.com/phoenix-az',
+        True, 8, 3, 'Previously had timeout issues',
+        ('#f0fdfa', '#0d9488', '#134e4a'),
+    ),
+    'dbg': (
+        'Desert Botanical Garden',
+        'https://www.dbg.org/events/',
+        True, 10, 2, 'Previously blocked by corporate firewall',
+        ('#f0fdf4', '#22c55e', '#14532d'),
+    ),
+    'odysea': (
+        'OdySea Aquarium',
+        'https://www.odyseaaquarium.com/events/',
+        True, 10, 2, 'Previously blocked by corporate firewall',
+        ('#e0f2fe', '#0284c7', '#0c4a6e'),
+    ),
+    'hale_theatre': (
+        'Hale Theatre Arizona',
+        'https://www.haletheater.com/events',
+        True, 8, 2, 'Previously had parsing issues',
+        ('#fef9c3', '#ca8a04', '#713f12'),
+    ),
 }
 
 # ---------------------------------------------------------------------------

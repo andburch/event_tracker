@@ -49,6 +49,7 @@ class Event(Base):
     category    = Column(String(100))                   # Broad category (e.g. 'music', 'family')
     price       = Column(String(100))                   # Free-text price string (e.g. '$10', 'Free')
     score       = Column(Float, nullable=True)          # LLM relevance score 0.0–1.0; NULL = unscored
+    pinned      = Column(Boolean, default=False, nullable=False, server_default='0')  # User's short list
     created_at  = Column(DateTime, default=datetime.utcnow)
 
 

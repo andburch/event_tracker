@@ -50,6 +50,8 @@ def parse_date(date_str, time_str):
         '%Y-%m-%d %I:%M %p',
         '%Y-%m-%d',
         '%m/%d/%Y',
+        '%b %d @ %I:%M %p',
+        '%B %d @ %I:%M %p',
     ]
     for fmt in formats:
         try:

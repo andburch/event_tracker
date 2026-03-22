@@ -113,12 +113,11 @@
     <!-- AI-Generated Summary -->
     <div class="card">
         <h2>Learned Preferences</h2>
-        <p class="subtitle">Auto-generated from your feedback history. Updates every 10 reactions. You cannot edit this directly.</p>
-        {% if profile and profile.preference_summary %}
-        <div class="summary-box">{{ profile.preference_summary }}</div>
-        {% else %}
-        <p class="summary-empty">Not generated yet — react to at least 10 events to build your preference profile.</p>
-        {% endif %}
+        <p class="subtitle">Auto-generated from your feedback history. Updates every 10 reactions. You can also edit it manually.</p>
+        <form method="POST" action="/profile/summary">
+            <textarea name="preference_summary" rows="8" placeholder="No learned preferences yet — react to at least 10 events, or type your own here.">{{ profile.preference_summary if profile else '' }}</textarea>
+            <button type="submit" class="save-btn">Save</button>
+        </form>
     </div>
 
     <!-- Profile History -->
