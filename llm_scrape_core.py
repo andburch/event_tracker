@@ -56,42 +56,11 @@ def _get_client() -> Groq:
 # ---------------------------------------------------------------------------
 # Model + schema
 # ---------------------------------------------------------------------------
-# openai/gpt-oss-20b: supports json_schema with strict=True (guaranteed
-# schema compliance), fast and cheap. strict=True requires all fields in
-# 'required' and additionalProperties: false.
-_MODEL = 'openai/gpt-oss-20b'
+# llama3-70b-8192: More reliable model with better JSON compliance
+# Higher TPM limit than llama-3.1-8b-instant
+_MODEL = 'llama-3.1-8b-instant'
 
-EVENT_SCHEMA = {
-    'type': 'json_schema',
-    'json_schema': {
-        'name': 'events_page',
-        'strict': True,
-        'schema': {
-            'type': 'object',
-            'properties': {
-                'events': {
-                    'type': 'array',
-                    'items': {
-                        'type': 'object',
-                        'properties': {
-                            'title':       {'type': 'string'},
-                            'date':        {'type': 'string'},
-                            'time':        {'type': ['string', 'null']},
-                            'description': {'type': ['string', 'null']},
-                            'venue':       {'type': ['string', 'null']},
-                            'url':         {'type': ['string', 'null']},
-                        },
-                        'required': ['title', 'date', 'time', 'description', 'venue', 'url'],
-                        'additionalProperties': False,
-                    }
-                },
-                'next_page_url': {'type': ['string', 'null']},
-            },
-            'required': ['events', 'next_page_url'],
-            'additionalProperties': False,
-        }
-    }
-}
+EVENT_SCHEMA = {'type': 'json_object'}
 
 # ---------------------------------------------------------------------------
 # User-agent spoofing
@@ -119,6 +88,7 @@ def clean_html(html):
       1. Remove non-content tags (scripts, styles, nav, footer, etc.)
       2. Inline hyperlinks as "Link Text [/url]" for pagination URL visibility
       3. Extract text from <main> or <body>, collapsing excess whitespace
+      4. Remove repetitive content patterns (Google Calendar, ICS links)
 
     Args:
         html: Raw HTML string
@@ -141,14 +111,24 @@ def clean_html(html):
     main = soup.find('main') or soup.find('body')
     text = (main or soup).get_text(separator='\n', strip=True)
     text = re.sub(r'\n{3,}', '\n\n', text)
+    
+    # Remove repetitive content patterns that bloat the text
+    # Remove Google Calendar and ICS export links (they're not events)
+    text = re.sub(r'Google Calendar \[http://www\.google\.com/calendar/event\?[^\]]+\]', '', text)
+    text = re.sub(r'ICS \[/[^\]]+\?format=ical\]', '', text)
+    
+    # Clean up extra whitespace after removals
+    text = re.sub(r'\n{3,}', '\n\n', text)
+    text = re.sub(r'[ \t]+', ' ', text)
+    
     return text
 
 # ---------------------------------------------------------------------------
 # Text chunking
 # ---------------------------------------------------------------------------
 
-_CHUNK_SIZE    = 24_000   # chars per LLM call
-_CHUNK_OVERLAP = 1_000    # overlap between adjacent chunks to avoid boundary splits
+_CHUNK_SIZE    = 4_000    # chars per LLM call — reduced for llama-3.1-8b-instant 6k TPM limit
+_CHUNK_OVERLAP = 300      # overlap between adjacent chunks to avoid boundary splits
 
 
 def _chunk_text(text):
@@ -204,15 +184,23 @@ def _ask_llm_single(text, current_url, site_hint='', is_last_chunk=True, retries
         f"{' (' + site_hint + ')' if site_hint else ''}.\n"
         f"Current page URL: {current_url}\n\n"
         "1. Extract ALL upcoming events into the 'events' array.\n"
-        "   Each event: title, date (e.g. 'March 22, 2026'), time (e.g. '8:00 PM' or null),\n"
-        "   description (or null), venue (or null), url (full absolute URL to the event detail\n"
-        "   page -- look for links on the event title or a 'More Info'/'Details' link; null if\n"
-        "   no individual event page exists).\n"
+        "   Each event must have these exact keys:\n"
+        "     title       (string)\n"
+        "     date        (string, MUST be in YYYY-MM-DD format, e.g. '2026-03-22'. If a date range like 'Oct 17, 2025 - Apr 25, 2026', use the START date)\n"
+        "     end_date    (string, YYYY-MM-DD format, or null. Only set if the event is a date range e.g. 'Oct 17, 2025 - Apr 25, 2026' -> '2026-04-25')\n"
+        "     time        (string e.g. '8:00 PM', or null)\n"
+        "     description (string or null)\n"
+        "     venue       (string or null)\n"
+        "     url         (full absolute URL to event detail page, or null. COPY the URL exactly as it appears in the text - do NOT paraphrase or modify it)\n"
         "   IMPORTANT: Times often appear on a separate line after the date, or in formats like\n"
         "   'Mar 20 @ 9:00 am - 5:00 pm' or '9:00 am - 4:00 pm' on the next line after the date.\n"
-        "   Always capture the start time if present. Use 12-hour format e.g. '9:00 AM'.\n\n"
+        "   Always capture the start time if present. Use 12-hour format e.g. '9:00 AM'.\n"
+        "   CRITICAL: Date MUST be in YYYY-MM-DD format (e.g. '2026-03-22'), not text format.\n\n"
         + pagination_instruction
-        + f"PAGE TEXT:\n{text}"
+        + "Respond with ONLY valid JSON in this exact format, no markdown, no explanation:\n"
+        '{"events": [...], "next_page_url": "..." or null}\n'
+        'Return your response as json only.\n\n'
+        f"PAGE TEXT:\n{text}"
     )
 
     for attempt in range(retries):
@@ -264,7 +252,7 @@ def ask_llm(text, current_url, site_hint='', retries=3):
 
     for i, (chunk, is_last) in enumerate(chunks):
         if i > 0:
-            time.sleep(3)
+            time.sleep(10)  # Increased delay to avoid rate limits
         result = _ask_llm_single(chunk, current_url, site_hint,
                                  is_last_chunk=is_last, retries=retries)
 

@@ -14,7 +14,7 @@ After scraping, runs LLM batch scoring automatically.
 """
 
 import sys, time
-from datetime import datetime
+from datetime import datetime, timedelta, date as date_type
 from database.models import Session, Event, ScraperRun
 from recommender.llm_filter import run_batch_scoring
 from llm_scrape_core import (
@@ -30,41 +30,44 @@ from llm_scrape_core import (
 def parse_date(date_str, time_str):
     """
     Convert LLM-returned date/time strings to a datetime object.
-
-    Falls back to today at 12:34 (sentinel time) if nothing parses --
-    12:34 is unusual enough to be easy to spot in the database.
+    
+    Expects dates in YYYY-MM-DD format as requested in the LLM prompt.
+    Falls back to today at 12:34 (sentinel time) if parsing fails.
     """
     if not date_str:
         return datetime.now().replace(hour=12, minute=34, second=0, microsecond=0)
 
-    combined = date_str.strip()
-    if time_str:
-        combined = f"{combined} {time_str.strip()}"
-
-    formats = [
-        '%B %d, %Y %I:%M %p',
-        '%B %d, %Y %I:%M%p',
-        '%B %d, %Y',
-        '%b %d, %Y %I:%M %p',
-        '%b %d, %Y',
-        '%Y-%m-%d %I:%M %p',
-        '%Y-%m-%d',
-        '%m/%d/%Y',
-        '%b %d @ %I:%M %p',
-        '%B %d @ %I:%M %p',
+    date_str = date_str.strip()
+    
+    # Primary format: YYYY-MM-DD (as requested from LLM)
+    try:
+        if time_str:
+            combined = f"{date_str} {time_str.strip()}"
+            # Try with time first
+            for time_fmt in ['%Y-%m-%d %I:%M %p', '%Y-%m-%d %I:%M%p', '%Y-%m-%d %H:%M']:
+                try:
+                    return datetime.strptime(combined, time_fmt)
+                except ValueError:
+                    continue
+        
+        # Date only - use noon as default time
+        return datetime.strptime(date_str, '%Y-%m-%d').replace(hour=12, minute=0)
+    except ValueError:
+        pass
+    
+    # Fallback: try legacy formats in case LLM doesn't follow instructions
+    legacy_formats = [
+        '%B %d, %Y', '%b %d, %Y', '%A, %B %d, %Y', '%A, %b %d, %Y',
+        '%m/%d/%Y', '%Y-%m-%d'
     ]
-    for fmt in formats:
+    
+    for fmt in legacy_formats:
         try:
-            return datetime.strptime(combined, fmt)
+            return datetime.strptime(date_str, fmt).replace(hour=12, minute=34)
         except ValueError:
             continue
 
-    for fmt in ['%B %d, %Y', '%b %d, %Y', '%Y-%m-%d', '%m/%d/%Y']:
-        try:
-            return datetime.strptime(date_str.strip(), fmt).replace(hour=12, minute=34)
-        except ValueError:
-            continue
-
+    # Ultimate fallback
     return datetime.now().replace(hour=12, minute=34, second=0, microsecond=0)
 
 
@@ -80,61 +83,118 @@ def scrape_and_save(key, name, start_url, use_selenium, wait, max_pages, session
         (events_found, events_added, success, error_message)
     """
     all_events    = []
-    current_url   = start_url
-    visited       = set()
-    page_num      = 0
     error_message = None
     success       = True
-
-    try:
-        while current_url and page_num < max_pages:
-            page_num += 1
-            if current_url in visited:
-                print(f"    loop detected, stopping")
-                break
-            visited.add(current_url)
-
-            print(f"  page {page_num}: {current_url[:80]}")
+    
+    # Special handling for calendar-based sites that need multiple months
+    if key == 'dirtydrummer':
+        urls_to_scrape = []
+        
+        # Current month and next 2 months
+        base_date = datetime.now()
+        for i in range(3):
+            month_date = base_date + timedelta(days=30*i)
+            month_str = month_date.strftime('%m-%Y')
+            url = f"https://www.thedirtydrummer.com/events?view=calendar&month={month_str}"
+            urls_to_scrape.append(url)
+        
+        print(f"  Multi-month scraping: {len(urls_to_scrape)} months")
+        
+        for month_num, url in enumerate(urls_to_scrape, 1):
+            print(f"  Month {month_num}: {url}")
             try:
-                html = fetch_selenium(current_url, wait) if use_selenium else fetch_requests(current_url)
+                html = fetch_selenium(url, wait) if use_selenium else fetch_requests(url)
+                text = clean_html(html)
+                print(f"    text={len(text)} chars", end='  ')
+                
+                result = ask_llm(text, current_url=url, site_hint=name)
+                page_events = result.get('events', [])
+                all_events.extend(page_events)
+                print(f"events={len(page_events)}")
+                
+                if month_num < len(urls_to_scrape):
+                    time.sleep(2)
+                    
             except Exception as e:
-                print(f"    FETCH ERROR: {e}")
-                break
+                print(f"\n    ERROR on month {month_num}: {e}")
+                if month_num == 1:  # If first month fails, mark as failure
+                    success = False
+                    error_message = str(e)
+    else:
+        # Standard pagination-based scraping for other sites
+        current_url   = start_url
+        visited       = set()
+        page_num      = 0
 
-            text = clean_html(html)
-            print(f"    text={len(text)} chars", end='  ')
+        # Standard pagination-based scraping for other sites
+        current_url   = start_url
+        visited       = set()
+        page_num      = 0
 
-            try:
-                result = ask_llm(text, current_url=current_url, site_hint=name)
-            except Exception as e:
-                print(f"\n    LLM ERROR: {e}")
-                break
+        try:
+            while current_url and page_num < max_pages:
+                page_num += 1
+                if current_url in visited:
+                    print(f"    loop detected, stopping")
+                    break
+                visited.add(current_url)
 
-            page_events = result.get('events', [])
-            next_url    = result.get('next_page_url')
-            all_events.extend(page_events)
-            print(f"events={len(page_events)}  next={next_url or 'null'}")
+                print(f"  page {page_num}: {current_url[:80]}")
+                try:
+                    html = fetch_selenium(current_url, wait) if use_selenium else fetch_requests(current_url)
+                except Exception as e:
+                    print(f"    FETCH ERROR: {e}")
+                    break
 
-            if next_url and not next_url.startswith('http'):
-                break
-            current_url = next_url
-            if current_url:
-                time.sleep(2)
+                text = clean_html(html)
+                print(f"    text={len(text)} chars", end='  ')
 
-    except Exception as e:
-        success       = False
-        error_message = str(e)
-        print(f"  ERROR: {e}")
+                try:
+                    result = ask_llm(text, current_url=current_url, site_hint=name)
+                except Exception as e:
+                    print(f"\n    LLM ERROR: {e}")
+                    break
+
+                page_events = result.get('events', [])
+                next_url    = result.get('next_page_url')
+                all_events.extend(page_events)
+                print(f"events={len(page_events)}  next={next_url or 'null'}")
+
+                if next_url and not next_url.startswith('http'):
+                    break
+                current_url = next_url
+                if current_url:
+                    time.sleep(2)
+
+        except Exception as e:
+            success       = False
+            error_message = str(e)
+            print(f"  ERROR: {e}")
 
     # Save to database
     events_added = 0
+    today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
     for ev in all_events:
-        dt    = parse_date(ev.get('date'), ev.get('time'))
-        title = (ev.get('title') or '').strip()
+        event_dt = parse_date(ev.get('date'), ev.get('time'))
+        title    = (ev.get('title') or '').strip()
         if not title:
             continue
 
-        existing = session.query(Event).filter_by(title=title, date=dt).first()
+        # Handle date range events: if start is past but end is future, use today
+        end_date_str = ev.get('end_date')
+        if end_date_str:
+            try:
+                end_dt = datetime.strptime(end_date_str.strip(), '%Y-%m-%d')
+                if event_dt < today and end_dt >= today:
+                    event_dt = today  # Currently running - use today
+            except ValueError:
+                pass
+
+        # Skip events with past dates (single-date events that already happened)
+        if event_dt < today:
+            continue
+
+        existing = session.query(Event).filter_by(title=title, date=event_dt).first()
         if not existing:
             url = (ev.get('url') or '').strip()
             if url and not url.startswith('http'):
@@ -145,7 +205,7 @@ def scrape_and_save(key, name, start_url, use_selenium, wait, max_pages, session
                 title=title,
                 description=(ev.get('description') or '').strip(),
                 venue=(ev.get('venue') or '').strip(),
-                date=dt,
+                date=event_dt,
                 url=url,
                 source=key,
                 category='general',
