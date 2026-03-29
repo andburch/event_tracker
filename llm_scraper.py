@@ -13,7 +13,7 @@ Usage:
 After scraping, runs LLM batch scoring automatically.
 """
 
-import sys, time
+import sys, time, re
 from datetime import datetime, timedelta, date as date_type
 from database.models import Session, Event, ScraperRun
 from recommender.llm_filter import run_batch_scoring
@@ -50,8 +50,8 @@ def parse_date(date_str, time_str):
                 except ValueError:
                     continue
         
-        # Date only - use noon as default time
-        return datetime.strptime(date_str, '%Y-%m-%d').replace(hour=12, minute=0)
+        # Date only - use sentinel time 12:34 to indicate no time was found
+        return datetime.strptime(date_str, '%Y-%m-%d').replace(hour=12, minute=34)
     except ValueError:
         pass
     
@@ -120,16 +120,137 @@ def scrape_and_save(key, name, start_url, use_selenium, wait, max_pages, session
                 if month_num == 1:  # If first month fails, mark as failure
                     success = False
                     error_message = str(e)
+
+    elif key == 'mesa':
+        # pageindex=N pagination (1-indexed), filters baked into URL
+        print(f"  Explicit pagination: {max_pages} pages")
+        for page_num in range(1, max_pages + 1):
+            url = re.sub(r'pageindex=\d+', f'pageindex={page_num}', start_url)
+            print(f"  Page {page_num}: {url[:80]}")
+            try:
+                html = fetch_selenium(url, wait) if use_selenium else fetch_requests(url)
+                text = clean_html(html)
+                print(f"    text={len(text)} chars", end='  ')
+                result = ask_llm(text, current_url=url, site_hint=name)
+                page_events = result.get('events', [])
+                all_events.extend(page_events)
+                print(f"events={len(page_events)}")
+                if not page_events:
+                    print(f"    No events, stopping")
+                    break
+                if page_num < max_pages:
+                    time.sleep(2)
+            except Exception as e:
+                print(f"\n    ERROR on page {page_num}: {e}")
+                if page_num == 1:
+                    success = False
+                    error_message = str(e)
+                break
+
+    elif key == 'phoenix':
+        # JS pagination - click Next button (no URL change)
+        # Button selector: a.cmp-searchCustom__pagination-btn (second = Next)
+        from selenium.webdriver.common.by import By
+        from llm_scrape_core import get_driver, close_driver
+
+        close_driver()
+        driver = get_driver()
+        driver.execute_cdp_cmd('Network.setUserAgentOverride', {
+            'userAgent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'acceptLanguage': 'en-US,en;q=0.9', 'platform': 'Win32',
+        })
+        try:
+            driver.get(start_url)
+        except Exception:
+            pass
+        time.sleep(wait)
+
+        for page_num in range(1, max_pages + 1):
+            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+            time.sleep(2)
+            text = clean_html(driver.page_source)
+            print(f"  page {page_num}: text={len(text)} chars", end='  ')
+            result = ask_llm(text, current_url=start_url, site_hint=name)
+            page_events = result.get('events', [])
+            all_events.extend(page_events)
+            print(f"events={len(page_events)}")
+
+            # Try to click Next
+            try:
+                btns = driver.find_elements(By.CSS_SELECTOR, "a.cmp-searchCustom__pagination-btn")
+                if len(btns) < 2 or btns[1].get_attribute('disabled'):
+                    print(f"    Last page reached")
+                    break
+                driver.execute_script("arguments[0].click();", btns[1])
+                time.sleep(3)
+            except Exception as e:
+                print(f"    Pagination error: {e}")
+                break
+
+        close_driver()
+
+    elif key == 'gilbert':
+        # Month-view calendar with /-curm-M/-cury-YYYY/ URL pattern
+        print(f"  Multi-month scraping: {max_pages} months")
+        base_date = datetime.now()
+        for i in range(max_pages):
+            month_date = base_date + timedelta(days=30*i)
+            url = f"https://www.gilbertaz.gov/residents/calendar-month-view/-curm-{month_date.month}/-cury-{month_date.year}"
+            print(f"  Month {i+1}: {url}")
+            try:
+                html = fetch_selenium(url, wait)
+                text = clean_html(html)
+                print(f"    text={len(text)} chars", end='  ')
+                result = ask_llm(text, current_url=url, site_hint=name)
+                page_events = result.get('events', [])
+                all_events.extend(page_events)
+                print(f"events={len(page_events)}")
+                if i < max_pages - 1:
+                    time.sleep(2)
+            except Exception as e:
+                print(f"\n    ERROR on month {i+1}: {e}")
+                if i == 0:
+                    success = False
+                    error_message = str(e)
+                break
+
+    elif key == 'chandler':        # Zero-indexed ?page=N pagination, buttons not visible to LLM
+        print(f"  Explicit pagination: {max_pages} pages")
+        for page_num in range(max_pages):
+            url = f"{start_url}?page={page_num}"
+            print(f"  Page {page_num}: {url}")
+            try:
+                html = fetch_selenium(url, wait) if use_selenium else fetch_requests(url)
+                text = clean_html(html)
+                print(f"    text={len(text)} chars", end='  ')
+
+                result = ask_llm(text, current_url=url, site_hint=name)
+                page_events = result.get('events', [])
+                all_events.extend(page_events)
+                print(f"events={len(page_events)}")
+
+                # Stop early if page returned no events (past end of results)
+                if not page_events:
+                    print(f"    No events on page {page_num}, stopping")
+                    break
+
+                if page_num < max_pages - 1:
+                    time.sleep(2)
+
+            except Exception as e:
+                print(f"\n    ERROR on page {page_num}: {e}")
+                if page_num == 0:
+                    success = False
+                    error_message = str(e)
+                break
     else:
         # Standard pagination-based scraping for other sites
         current_url   = start_url
         visited       = set()
         page_num      = 0
 
-        # Standard pagination-based scraping for other sites
-        current_url   = start_url
-        visited       = set()
-        page_num      = 0
+        # Sites that need multiple scroll passes to load all content
+        scroll_passes = 10
 
         try:
             while current_url and page_num < max_pages:
@@ -141,7 +262,7 @@ def scrape_and_save(key, name, start_url, use_selenium, wait, max_pages, session
 
                 print(f"  page {page_num}: {current_url[:80]}")
                 try:
-                    html = fetch_selenium(current_url, wait) if use_selenium else fetch_requests(current_url)
+                    html = fetch_selenium(current_url, wait, scroll_passes=scroll_passes) if use_selenium else fetch_requests(current_url)
                 except Exception as e:
                     print(f"    FETCH ERROR: {e}")
                     break

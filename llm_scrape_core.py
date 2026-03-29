@@ -322,7 +322,7 @@ def close_driver():
         _selenium_driver = None
 
 
-def fetch_selenium(url, wait=6):
+def fetch_selenium(url, wait=6, scroll_passes=10):
     """
     Fetch a URL using Selenium with CDP user-agent spoofing.
 
@@ -330,8 +330,9 @@ def fetch_selenium(url, wait=6):
     CDP override patches both the HTTP User-Agent header and JS navigator.userAgent.
 
     Args:
-        url:  URL to fetch
-        wait: Seconds to sleep after page load for JS rendering
+        url:          URL to fetch
+        wait:         Seconds to sleep after page load for JS rendering
+        scroll_passes: Number of times to scroll to bottom (for lazy-loading pages)
 
     Returns:
         Page HTML string
@@ -351,8 +352,16 @@ def fetch_selenium(url, wait=6):
         pass  # TimeoutException on slow pages -- partial HTML is still useful
 
     time.sleep(wait)
-    driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-    time.sleep(2)
+
+    # Scroll repeatedly to trigger lazy-loading
+    last_height = 0
+    for _ in range(scroll_passes):
+        driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
+        time.sleep(2)
+        new_height = driver.execute_script("return document.body.scrollHeight")
+        if new_height == last_height:
+            break  # No new content loaded
+        last_height = new_height
 
     return driver.page_source
 
