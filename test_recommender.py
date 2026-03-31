@@ -16,7 +16,6 @@ import httpx
 from groq import Groq
 import config
 
-logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
 log = logging.getLogger(__name__)
 
 
@@ -150,6 +149,9 @@ def score_sample(event_ids=None, n=5):
 
 
 if __name__ == '__main__':
+    # Configure logging only when run as main script
+    logging.basicConfig(level=logging.DEBUG, format='%(levelname)s: %(message)s')
+    
     parser = argparse.ArgumentParser(description='Test the Groq recommendation system')
     parser.add_argument('--ping', action='store_true', help='Just test the connection')
     parser.add_argument('--n', type=int, default=5, help='Number of events to score (default 5)')

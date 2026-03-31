@@ -27,12 +27,19 @@ from llm_scrape_core import (
 # Date parsing
 # ---------------------------------------------------------------------------
 
-def parse_date(date_str, time_str):
+def parse_date(date_str: str | None, time_str: str | None) -> datetime:
     """
     Convert LLM-returned date/time strings to a datetime object.
     
     Expects dates in YYYY-MM-DD format as requested in the LLM prompt.
     Falls back to today at 12:34 (sentinel time) if parsing fails.
+    
+    Args:
+        date_str: Date string in YYYY-MM-DD format (or None)
+        time_str: Time string like "8:00 PM" (or None)
+    
+    Returns:
+        datetime object with parsed date/time, or fallback with sentinel time
     """
     if not date_str:
         return datetime.now().replace(hour=12, minute=34, second=0, microsecond=0)
@@ -82,12 +89,29 @@ def parse_date(date_str, time_str):
 # Scrape + save
 # ---------------------------------------------------------------------------
 
-def scrape_and_save(key, name, start_url, use_selenium, wait, max_pages, session):
+def scrape_and_save(
+    key: str,
+    name: str,
+    start_url: str,
+    use_selenium: bool,
+    wait: int,
+    max_pages: int,
+    session
+) -> tuple[int, int, bool, str | None]:
     """
     Scrape one site via LLM extraction and save new events to the database.
 
+    Args:
+        key: Site key from SITES dict (e.g., 'fibber', 'mesa')
+        name: Display name for the site
+        start_url: Starting URL to scrape
+        use_selenium: Whether to use Selenium (True) or requests (False)
+        wait: Seconds to wait after page load
+        max_pages: Maximum number of pages to scrape
+        session: SQLAlchemy session for database operations
+
     Returns:
-        (events_found, events_added, success, error_message)
+        Tuple of (events_found, events_added, success, error_message)
     """
     all_events    = []
     error_message = None

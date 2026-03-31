@@ -1,12 +1,12 @@
 # Phoenix Valley Events Recommender
 
-A personal event aggregator for the Phoenix Valley, AZ area. Scrapes events from city government sites, local venues, and arts centers, then uses an LLM to rank them by your personal preferences.
+A personal event aggregator for the Phoenix Valley, AZ area. Scrapes events from city government sites, local venues, and arts centers using LLM-based extraction, then uses AI to rank them by your personal preferences.
 
 ## Requirements
 
 - Python 3.10+
 - Google Chrome or Chromium (for Selenium-based scrapers)
-- An OpenAI API key (optional — used for preference-based ranking)
+- A Groq API key (free tier available — used for LLM-based scraping and preference-based ranking)
 
 ## Setup
 
@@ -15,80 +15,131 @@ A personal event aggregator for the Phoenix Valley, AZ area. Scrapes events from
    pip install -r requirements.txt
    ```
 
-2. Copy `.env.example` to `.env` and fill in your key:
+2. Copy `.env.example` to `.env` and fill in your Groq API key:
    ```bash
    cp .env.example .env
    ```
+   Edit `.env`:
    ```
-   OPENAI_API_KEY=your_key_here
+   GROQ_API_KEY=your_groq_api_key_here
    ```
+   Get a free API key at https://console.groq.com
 
 3. Run the scrapers to populate the database:
    ```bash
-   python scraper_runner.py
+   python llm_scraper.py
    ```
-   This takes 10–20 minutes. You can run a single scraper to test:
+   This takes 10–20 minutes depending on how many sites you scrape. You can run specific sites only:
    ```bash
-   python scraper_runner.py mesa_gov
+   python llm_scraper.py fibber yuccatap
+   ```
+   Or see all available sites:
+   ```bash
+   python llm_scraper.py list
    ```
 
-4. Start the web server:
+4. (Optional) Run batch scoring to rank events by your preferences:
+   ```bash
+   python score_events.py
+   ```
+   Note: You need to set up your taste profile first (see Preference Learning below).
+
+5. Start the web server:
    ```bash
    python server/app.py
    ```
 
-5. Open http://localhost:5000
+6. Open http://localhost:5000
 
 ## Web Interface
 
-Two views are available:
+Three main views are available:
 
 - **List view** (`/`) — events sorted by date or relevance score, filterable by source and date range
 - **Calendar view** (`/calendar`) — monthly grid with color-coded events by source, click any event for details
+- **Profile page** (`/profile`) — set your taste preferences and view feedback history
 - **Health dashboard** (`/health`) — scraper run history and event counts per source
 
 ## Event Sources
 
-| Source | Type |
-|---|---|
-| City of Phoenix | Government |
-| City of Tempe | Government |
-| City of Mesa | Government |
-| City of Chandler | Government |
-| City of Scottsdale | Government |
-| City of Gilbert | Government |
-| Chandler Public Library | Library |
-| Tempe Public Library | Library |
-| Chandler Center for the Arts | Arts |
-| Mesa Arts Center | Arts |
-| Scottsdale Arts | Arts |
-| Tempe Center for the Arts | Arts |
-| ASU Kerr Cultural Center | Arts |
-| AZ Museum of Natural History | Museum |
-| Fibber Magee's Pub | Music venue |
-| Yucca Tap Room | Music venue |
-| Dirty Drummer | Music venue |
-| Raising Arizona Kids | Family |
+The scraper uses LLM-based extraction to pull events from these sources:
+
+| Source | Type | Key |
+|---|---|---|
+| Fibber Magee's Pub | Music venue | `fibber` |
+| Dirty Drummer | Music venue | `dirtydrummer` |
+| Yucca Tap Room | Music venue | `yuccatap` |
+| Raising Arizona Kids | Family | `rak` |
+| City of Chandler | Government | `chandler` |
+| City of Scottsdale | Government | `scottsdale` |
+| City of Gilbert | Government | `gilbert` |
+| City of Phoenix | Government | `phoenix` |
+| City of Mesa | Government | `mesa` |
+| Chandler Public Library | Library | `chandler_lib` |
+| Tempe Public Library | Library | `tempe_lib` |
+| AZ Museum of Natural History | Museum | `azmnh` |
+| Chandler Center for the Arts | Arts | `chandler_center` |
+| Mesa Arts Center | Arts | `mesa_arts` |
+| Scottsdale Arts | Arts | `scottsdale_arts` |
+| ASU Kerr Cultural Center | Arts | `asu_kerr` |
+| Tempe Center for the Arts | Arts | `tca` |
+| Downtown Tempe | Community | `downtown_tempe` |
+| Desert Botanical Garden | Garden | `dbg` |
+| OdySea Aquarium | Aquarium | `odysea` |
+| Hale Theatre Arizona | Theatre | `hale_theatre` |
 
 ## Preference Learning
 
-Click 👍 or 👎 on any event to record feedback. Once you have a few feedbacks, the LLM will start scoring events by how well they match your taste. Events are ranked by this score when you sort by "Relevance Score."
+1. Go to `/profile` and write a short description of your interests in the "About Me" section
+2. Browse events and click 👍 or 👎 on any event to record feedback
+3. After 10 feedbacks, the AI will automatically generate a preference summary
+4. Run `python score_events.py` to score all events based on your profile
+5. Sort by "Relevance Score" on the main page to see your personalized recommendations
 
-If no OpenAI key is configured, all events default to a 0.5 score and sorting by date is used instead.
+If no Groq key is configured, all events default to a 0.5 score and sorting by date is used instead.
 
 ## Running Scrapers on a Schedule
 
-The scraper runner supports being called from any scheduler (Task Scheduler on Windows, cron on Linux/Mac):
+The scraper supports being called from any scheduler (Task Scheduler on Windows, cron on Linux/Mac):
 
 ```bash
 # Run all scrapers
-python scraper_runner.py
+python llm_scraper.py
 
-# Run a specific scraper
-python scraper_runner.py fibbermagees
+# Run specific scrapers
+python llm_scraper.py phoenix mesa chandler
+
+# Append to existing events (don't purge database first)
+python llm_scraper.py --no-purge
 ```
 
-Available scraper names: `phoenix_gov`, `tempe_gov`, `mesa_gov`, `chandler_gov`, `scottsdale_gov`, `gilbert_gov`, `chandler_library`, `tempe_library`, `chandler_center`, `mesa_arts`, `scottsdale_arts`, `tca`, `asu_kerr`, `azmnh`, `fibbermagees`, `yuccatap`, `dirtydrummer`, `raisingarizonakids`
+Example cron entry (daily at 6 AM):
+```
+0 6 * * * cd /path/to/event_tracker && python llm_scraper.py
+```
+
+Example Windows Task Scheduler command:
+```
+C:\Python310\python.exe C:\path\to\event_tracker\llm_scraper.py
+```
+
+## Testing Individual Scrapers
+
+Use the test harness to debug scraping issues without writing to the database:
+
+```bash
+# Test one site
+python _test_llm_scrape.py fibber
+
+# Test multiple sites
+python _test_llm_scrape.py phoenix mesa
+
+# Test with raw HTML dump (for debugging)
+python _test_llm_scrape.py chandler --dump
+
+# List all available sites
+python _test_llm_scrape.py list
+```
 
 ## Porting to Another Machine
 
@@ -98,19 +149,89 @@ Available scraper names: `phoenix_gov`, `tempe_gov`, `mesa_gov`, `chandler_gov`,
 4. Recreate `.env` (it's gitignored)
 5. Start the server
 
-ChromeDriver is auto-downloaded by `webdriver-manager` if the bundled `chromedriver.exe` doesn't match your Chrome version.
+ChromeDriver is bundled as `chromedriver.exe` in the project root. If it doesn't match your Chrome version, download the correct version from https://chromedriver.chromium.org/
 
 ## Corporate Firewall Notes
 
-- SSL verification is disabled on all HTTP requests and the OpenAI client
+- SSL verification is disabled on all HTTP requests and the Groq client
 - Set `HTTP_PROXY` / `HTTPS_PROXY` in `.env` if needed
-- Some scrapers (Desert Botanical Garden, OdySea) may be blocked — they're disabled by default and can be re-enabled in `scrapers/__init__.py`
+- Some sites (Gilbert, Scottsdale Arts, TCA) use Akamai bot detection and may occasionally fail
 
-## Adding a New Scraper
+## How the LLM Scraper Works
 
-1. Create `scrapers/{venue}_scraper.py` inheriting from `BaseScraper`
-2. Implement `scrape()` returning a list of normalized event dicts
-3. Use `self.get_page(url)` for static sites or `self.get_page_selenium(url)` for JS-heavy ones
-4. Add to the `SCRAPERS` list in `scrapers/__init__.py`
+Traditional web scrapers use CSS selectors that break whenever a site redesigns. This project uses a different approach:
 
-Standard event dict keys: `title`, `description`, `venue`, `date`, `url`, `category`
+1. Fetch the page HTML (via requests or Selenium for JS-heavy sites)
+2. Strip HTML down to clean readable text
+3. Send that text to Groq's LLM with a structured JSON schema
+4. The LLM extracts events AND finds the next page URL
+5. Follow pagination until no more pages
+
+Because the LLM reads plain text rather than HTML structure, it works on virtually any events page regardless of how it's built.
+
+## Adding a New Event Source
+
+1. Open `sources.py`
+2. Add an entry to the `SITES` dictionary:
+   ```python
+   'mysite': (
+       'My Site Display Name',
+       'https://example.com/events',
+       True,  # use_selenium (True for JS-heavy sites, False for static HTML)
+       5,     # wait_secs (seconds to wait after page load)
+       5,     # max_pages (pagination depth limit)
+       '',    # note (optional quirks/notes)
+       ('#fff7ed', '#c2410c', '#7c2d12'),  # color (bg, border, text) for calendar
+   ),
+   ```
+3. Test it: `python _test_llm_scrape.py mysite`
+4. Run it: `python llm_scraper.py mysite`
+
+That's it! No custom parsing code needed.
+
+## Project Structure
+
+```
+/
+├── llm_scrape_core.py  # Core LLM extraction logic
+├── llm_scraper.py      # Production scraper (saves to DB)
+├── score_events.py     # Batch scoring script
+├── _test_llm_scrape.py # Test harness (no DB writes)
+├── sources.py          # Site definitions and display config
+├── config.py           # Application configuration
+├── database/
+│   └── models.py       # SQLAlchemy ORM models
+├── recommender/
+│   └── llm_filter.py   # Event scoring and preference learning
+├── server/
+│   ├── app.py          # Flask web application
+│   └── templates/      # HTML templates
+├── events.db           # SQLite database (generated)
+└── .env                # Environment variables (not in git)
+```
+
+## Troubleshooting
+
+**Scraper returns 0 events:**
+- Run with `--dump` flag to see the raw text: `python _test_llm_scrape.py sitename --dump`
+- Check if the site is blocking headless browsers (try increasing `wait_secs` in `sources.py`)
+- Check Groq API quota: `python check_groq_quota.py`
+
+**"Access Denied" or bot detection:**
+- Some sites (Gilbert, Scottsdale Arts) use Akamai bot detection
+- The scraper uses user-agent spoofing and fresh sessions to mitigate this
+- If it persists, try running at different times of day
+
+**Scoring not working:**
+- Make sure `GROQ_API_KEY` is set in `.env`
+- Set up your taste profile at `/profile`
+- Run `python score_events.py` after scraping
+
+**Database locked errors:**
+- SQLite doesn't handle concurrent writes well
+- Don't run multiple scrapers simultaneously
+- Don't run the web server and scraper at the same time
+
+## License
+
+This is a personal project. Use at your own risk.

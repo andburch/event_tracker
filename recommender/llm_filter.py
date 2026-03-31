@@ -119,24 +119,26 @@ def get_profile():
     """
     from database.models import Session, UserProfile
     session = Session()
-    profile = session.query(UserProfile).first()
-    if not profile:
-        profile = UserProfile(
-            taste_prompt='',
-            preference_summary='',
-            feedback_count_at_last_summary=0,
-        )
-        session.add(profile)
-        session.commit()
-    session.close()
-    return profile
+    try:
+        profile = session.query(UserProfile).first()
+        if not profile:
+            profile = UserProfile(
+                taste_prompt='',
+                preference_summary='',
+                feedback_count_at_last_summary=0,
+            )
+            session.add(profile)
+            session.commit()
+        return profile
+    finally:
+        session.close()
 
 
 # ---------------------------------------------------------------------------
 # Score retrieval (used by web server)
 # ---------------------------------------------------------------------------
 
-def score_events(events: list) -> list:
+def score_events(events: list) -> list[tuple]:
     """
     Return list of (event, score) tuples using cached DB scores.
 
@@ -158,7 +160,7 @@ def score_events(events: list) -> list:
 # Batch scoring
 # ---------------------------------------------------------------------------
 
-def run_batch_scoring(session=None, rescore_all: bool = False):
+def run_batch_scoring(session=None, rescore_all: bool = False) -> None:
     """
     Score future events in chunked LLM calls and write scores back to the DB.
 
@@ -170,8 +172,8 @@ def run_batch_scoring(session=None, rescore_all: bool = False):
     all previously scored events.
 
     Args:
-        session:     Optional existing SQLAlchemy session. If None, one is
-                     created and closed internally.
+        session: Optional existing SQLAlchemy session. If None, one is
+                 created and closed internally.
         rescore_all: If True, re-score all future events regardless of current score.
     """
     from database.models import Session as MakeSession, Event, UserProfile
@@ -198,7 +200,7 @@ def run_batch_scoring(session=None, rescore_all: bool = False):
         # Build query: future events only, optionally filtered to unscored
         query = session.query(Event).filter(Event.date >= datetime.now())
         if not rescore_all:
-            query = query.filter(Event.score == None)  # noqa: E711 — SQLAlchemy requires == None
+            query = query.filter(Event.score.is_(None))
 
         events = query.all()
         if not events:
@@ -245,7 +247,7 @@ def run_batch_scoring(session=None, rescore_all: bool = False):
             session.close()
 
 
-def _call_batch_score(events: list, taste_prompt: str, preference_summary: str) -> dict:
+def _call_batch_score(events: list, taste_prompt: str, preference_summary: str) -> dict[int, float]:
     """
     Make one Groq API call to score a chunk of events.
 
@@ -256,8 +258,8 @@ def _call_batch_score(events: list, taste_prompt: str, preference_summary: str) 
     We strip fences defensively in case the model ignores that instruction.
 
     Args:
-        events:            List of Event ORM objects (one chunk).
-        taste_prompt:      User-written interest description.
+        events: List of Event ORM objects (one chunk).
+        taste_prompt: User-written interest description.
         preference_summary: AI-generated summary of past feedback.
 
     Returns:
@@ -352,7 +354,7 @@ def _call_batch_score(events: list, taste_prompt: str, preference_summary: str) 
 # Preference summary
 # ---------------------------------------------------------------------------
 
-def maybe_update_preference_summary():
+def maybe_update_preference_summary() -> None:
     """
     Check if enough new feedback has accumulated to warrant a summary refresh.
 

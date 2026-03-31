@@ -54,64 +54,64 @@ def index():
     No live LLM calls happen here.
     """
     session = Session()
+    try:
+        selected_sources = request.args.getlist('sources')  # Empty list = show all
+        start_date = request.args.get('start_date', '')
+        end_date   = request.args.get('end_date', '')
+        sort_by    = request.args.get('sort', 'date')
 
-    selected_sources = request.args.getlist('sources')  # Empty list = show all
-    start_date = request.args.get('start_date', '')
-    end_date   = request.args.get('end_date', '')
-    sort_by    = request.args.get('sort', 'date')
+        # Base query: only future events
+        query = session.query(Event).filter(Event.date >= datetime.now())
 
-    # Base query: only future events
-    query = session.query(Event).filter(Event.date >= datetime.now())
+        # Apply optional filters
+        if selected_sources:
+            query = query.filter(Event.source.in_(selected_sources))
 
-    # Apply optional filters
-    if selected_sources:
-        query = query.filter(Event.source.in_(selected_sources))
+        if start_date:
+            try:
+                query = query.filter(Event.date >= datetime.strptime(start_date, '%Y-%m-%d'))
+            except ValueError:
+                pass  # Ignore malformed date params
 
-    if start_date:
-        try:
-            query = query.filter(Event.date >= datetime.strptime(start_date, '%Y-%m-%d'))
-        except ValueError:
-            pass  # Ignore malformed date params
+        if end_date:
+            try:
+                end_dt = datetime.strptime(end_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
+                query = query.filter(Event.date <= end_dt)
+            except ValueError:
+                pass
 
-    if end_date:
-        try:
-            end_dt = datetime.strptime(end_date, '%Y-%m-%d').replace(hour=23, minute=59, second=59)
-            query = query.filter(Event.date <= end_dt)
-        except ValueError:
-            pass
+        events = query.all()
 
-    events = query.all()
+        # Pinned events (shortlist) — always shown regardless of filters
+        pinned_events = session.query(Event).filter(
+            Event.pinned == True,
+            Event.date >= datetime.now(),
+        ).order_by(Event.date).all()
 
-    # Pinned events (shortlist) — always shown regardless of filters
-    pinned_events = session.query(Event).filter(
-        Event.pinned == True,
-        Event.date >= datetime.now(),
-    ).order_by(Event.date).all()
+        # Build source list sorted alphabetically by display name for the filter dropdown
+        raw_sources = [s[0] for s in session.query(Event.source).distinct().all()]
+        sources = sorted(raw_sources, key=lambda s: SOURCE_NAMES.get(s, s))
 
-    # Build source list sorted alphabetically by display name for the filter dropdown
-    raw_sources = [s[0] for s in session.query(Event.source).distinct().all()]
-    sources = sorted(raw_sources, key=lambda s: SOURCE_NAMES.get(s, s))
+        # Attach cached scores and sort
+        scored_events = score_events(events)
+        if sort_by == 'score':
+            scored_events.sort(key=lambda x: x[1], reverse=True)
+        else:
+            scored_events.sort(key=lambda x: x[0].date)
 
-    session.close()
-
-    # Attach cached scores and sort
-    scored_events = score_events(events)
-    if sort_by == 'score':
-        scored_events.sort(key=lambda x: x[1], reverse=True)
-    else:
-        scored_events.sort(key=lambda x: x[0].date)
-
-    return render_template(
-        'index.html',
-        events=scored_events,
-        pinned_events=pinned_events,
-        sources=sources,
-        source_names=SOURCE_NAMES,
-        selected_sources=selected_sources,
-        start_date=start_date,
-        end_date=end_date,
-        sort_by=sort_by,
-    )
+        return render_template(
+            'index.html',
+            events=scored_events,
+            pinned_events=pinned_events,
+            sources=sources,
+            source_names=SOURCE_NAMES,
+            selected_sources=selected_sources,
+            start_date=start_date,
+            end_date=end_date,
+            sort_by=sort_by,
+        )
+    finally:
+        session.close()
 
 
 @app.route('/feedback', methods=['POST'])
@@ -127,29 +127,43 @@ def feedback():
     After writing feedback, calls maybe_update_preference_summary() which
     checks if enough new feedback has accumulated to trigger a summary refresh.
     """
-    data       = request.json
-    event_id   = data.get('event_id')
+    data = request.json
+    if not data:
+        return jsonify({'status': 'error', 'message': 'No JSON data provided'}), 400
+    
+    event_id = data.get('event_id')
     interested = data.get('interested')
+    
+    # Validate input
+    if event_id is None:
+        return jsonify({'status': 'error', 'message': 'event_id is required'}), 400
+    if not isinstance(event_id, int):
+        return jsonify({'status': 'error', 'message': 'event_id must be an integer'}), 400
+    if interested is None:
+        return jsonify({'status': 'error', 'message': 'interested is required'}), 400
+    if not isinstance(interested, bool):
+        return jsonify({'status': 'error', 'message': 'interested must be a boolean'}), 400
 
     session = Session()
-    event = session.query(Event).get(event_id)
-    if not event:
-        session.close()
-        return jsonify({'status': 'error', 'message': 'Event not found'}), 404
+    try:
+        event = session.query(Event).get(event_id)
+        if not event:
+            return jsonify({'status': 'error', 'message': 'Event not found'}), 404
 
-    # Snapshot event content at click time
-    fb = FeedbackHistory(
-        event_id=event.id,
-        event_title=event.title,
-        event_description=event.description,
-        event_source=event.source,
-        event_category=event.category,
-        event_venue=event.venue,
-        interested=interested,
-    )
-    session.add(fb)
-    session.commit()
-    session.close()
+        # Snapshot event content at click time
+        fb = FeedbackHistory(
+            event_id=event.id,
+            event_title=event.title,
+            event_description=event.description,
+            event_source=event.source,
+            event_category=event.category,
+            event_venue=event.venue,
+            interested=interested,
+        )
+        session.add(fb)
+        session.commit()
+    finally:
+        session.close()
 
     # Potentially regenerate the AI preference summary (every SUMMARY_THRESHOLD feedbacks)
     maybe_update_preference_summary()
@@ -178,82 +192,82 @@ def health():
     7. Otherwise                    -> Error
     """
     session = Session()
+    try:
+        active_scrapers   = list(SITES.keys())
+        disabled_scrapers = []
 
-    active_scrapers   = list(SITES.keys())
-    disabled_scrapers = []
+        # Event counts per source (total and future)
+        from sqlalchemy import case
+        event_counts = session.query(
+            Event.source,
+            func.count(Event.id).label('total'),
+            func.sum(case((Event.date >= datetime.now(), 1), else_=0)).label('future'),
+        ).group_by(Event.source).all()
 
-    # Event counts per source (total and future)
-    from sqlalchemy import case
-    event_counts = session.query(
-        Event.source,
-        func.count(Event.id).label('total'),
-        func.sum(case((Event.date >= datetime.now(), 1), else_=0)).label('future'),
-    ).group_by(Event.source).all()
+        event_stats = {
+            row.source: {'total': row.total, 'future': row.future}
+            for row in event_counts
+        }
 
-    event_stats = {
-        row.source: {'total': row.total, 'future': row.future}
-        for row in event_counts
-    }
+        # Scraper run records from the last 7 days
+        week_ago    = datetime.utcnow() - timedelta(days=7)
+        recent_runs = session.query(ScraperRun).filter(
+            ScraperRun.run_timestamp >= week_ago
+        ).order_by(ScraperRun.run_timestamp.desc()).all()
 
-    # Scraper run records from the last 7 days
-    week_ago    = datetime.utcnow() - timedelta(days=7)
-    recent_runs = session.query(ScraperRun).filter(
-        ScraperRun.run_timestamp >= week_ago
-    ).order_by(ScraperRun.run_timestamp.desc()).all()
+        # Compute per-scraper stats dict
+        scraper_stats = {}
+        for source in active_scrapers + disabled_scrapers:
+            runs = [r for r in recent_runs if r.source == source]
+            if runs:
+                successful_runs = [r for r in runs if r.success]
+                last_run        = runs[0]  # Most recent (already sorted desc)
 
-    # Compute per-scraper stats dict
-    scraper_stats = {}
-    for source in active_scrapers + disabled_scrapers:
-        runs = [r for r in recent_runs if r.source == source]
-        if runs:
-            successful_runs = [r for r in runs if r.success]
-            last_run        = runs[0]  # Most recent (already sorted desc)
+                scraper_stats[source] = {
+                    'total_runs':        len(runs),
+                    'successful_runs':   len(successful_runs),
+                    'success_rate':      (len(successful_runs) / len(runs) * 100),
+                    'last_run':          last_run.run_timestamp,
+                    'last_success':      last_run.success,
+                    'last_events_found': last_run.events_found,
+                    'last_events_added': last_run.events_added,
+                    'last_duration':     last_run.duration_seconds,
+                    'last_error':        last_run.error_message,
+                    'avg_events':        sum(r.events_found for r in runs) / len(runs),
+                    'avg_duration':      sum(r.duration_seconds for r in runs) / len(runs),
+                }
+            else:
+                # No runs recorded — show zeroes
+                scraper_stats[source] = {
+                    'total_runs': 0, 'successful_runs': 0, 'success_rate': 0,
+                    'last_run': None, 'last_success': None,
+                    'last_events_found': 0, 'last_events_added': 0,
+                    'last_duration': 0, 'last_error': None,
+                    'avg_events': 0, 'avg_duration': 0,
+                }
 
-            scraper_stats[source] = {
-                'total_runs':        len(runs),
-                'successful_runs':   len(successful_runs),
-                'success_rate':      (len(successful_runs) / len(runs) * 100),
-                'last_run':          last_run.run_timestamp,
-                'last_success':      last_run.success,
-                'last_events_found': last_run.events_found,
-                'last_events_added': last_run.events_added,
-                'last_duration':     last_run.duration_seconds,
-                'last_error':        last_run.error_message,
-                'avg_events':        sum(r.events_found for r in runs) / len(runs),
-                'avg_duration':      sum(r.duration_seconds for r in runs) / len(runs),
-            }
-        else:
-            # No runs recorded — show zeroes
-            scraper_stats[source] = {
-                'total_runs': 0, 'successful_runs': 0, 'success_rate': 0,
-                'last_run': None, 'last_success': None,
-                'last_events_found': 0, 'last_events_added': 0,
-                'last_duration': 0, 'last_error': None,
-                'avg_events': 0, 'avg_duration': 0,
-            }
+        # Aggregate totals for the summary banner
+        total_events        = sum(stats['total']  for stats in event_stats.values())
+        total_future        = sum(stats['future'] for stats in event_stats.values())
+        total_runs          = len(recent_runs)
+        successful_runs     = len([r for r in recent_runs if r.success])
+        overall_success_rate = (successful_runs / total_runs * 100) if total_runs > 0 else 0
 
-    # Aggregate totals for the summary banner
-    total_events        = sum(stats['total']  for stats in event_stats.values())
-    total_future        = sum(stats['future'] for stats in event_stats.values())
-    total_runs          = len(recent_runs)
-    successful_runs     = len([r for r in recent_runs if r.success])
-    overall_success_rate = (successful_runs / total_runs * 100) if total_runs > 0 else 0
-
-    session.close()
-
-    return render_template(
-        'health.html',
-        active_scrapers=active_scrapers,
-        disabled_scrapers=disabled_scrapers,
-        event_stats=event_stats,
-        scraper_stats=scraper_stats,
-        source_names=SOURCE_NAMES,
-        total_events=total_events,
-        total_future=total_future,
-        total_runs=total_runs,
-        overall_success_rate=overall_success_rate,
-        current_time=datetime.now(),
-    )
+        return render_template(
+            'health.html',
+            active_scrapers=active_scrapers,
+            disabled_scrapers=disabled_scrapers,
+            event_stats=event_stats,
+            scraper_stats=scraper_stats,
+            source_names=SOURCE_NAMES,
+            total_events=total_events,
+            total_future=total_future,
+            total_runs=total_runs,
+            overall_success_rate=overall_success_rate,
+            current_time=datetime.now(),
+        )
+    finally:
+        session.close()
 
 
 @app.route('/calendar')
@@ -270,64 +284,65 @@ def calendar_view():
     7-column calendar grid using Python's calendar.monthcalendar().
     """
     session = Session()
-
-    now = datetime.now()
     try:
-        year  = int(request.args.get('year',  now.year))
-        month = int(request.args.get('month', now.month))
-    except ValueError:
-        year, month = now.year, now.month
+        now = datetime.now()
+        try:
+            year  = int(request.args.get('year',  now.year))
+            month = int(request.args.get('month', now.month))
+        except ValueError:
+            year, month = now.year, now.month
 
-    # Wrap month boundaries (e.g. month=0 -> December of previous year)
-    if month < 1:  month, year = 12, year - 1
-    if month > 12: month, year = 1,  year + 1
+        # Wrap month boundaries (e.g. month=0 -> December of previous year)
+        if month < 1:  month, year = 12, year - 1
+        if month > 12: month, year = 1,  year + 1
 
-    selected_sources = request.args.getlist('sources')
+        selected_sources = request.args.getlist('sources')
 
-    last_day = date(year, month, calendar.monthrange(year, month)[1])
+        last_day = date(year, month, calendar.monthrange(year, month)[1])
 
-    query = session.query(Event).filter(
-        Event.date >= datetime(year, month, 1),
-        Event.date <= datetime(year, month, last_day.day, 23, 59, 59),
-    )
-    if selected_sources:
-        query = query.filter(Event.source.in_(selected_sources))
+        query = session.query(Event).filter(
+            Event.date >= datetime(year, month, 1),
+            Event.date <= datetime(year, month, last_day.day, 23, 59, 59),
+        )
+        if selected_sources:
+            query = query.filter(Event.source.in_(selected_sources))
 
-    events = query.order_by(Event.date).all()
+        events = query.order_by(Event.date).all()
 
-    # Group events by calendar day number for the template
-    events_by_day = {}
-    for ev in events:
-        events_by_day.setdefault(ev.date.day, []).append(ev)
+        # Group events by calendar day number for the template
+        events_by_day = {}
+        for ev in events:
+            events_by_day.setdefault(ev.date.day, []).append(ev)
 
-    # calendar.monthcalendar returns a list of weeks; each week is 7 ints (0 = padding)
-    # setfirstweekday(6) = Sunday, matching the Sun-Mon-...-Sat column headers in the template
-    calendar.setfirstweekday(6)
-    cal = calendar.monthcalendar(year, month)
+        # calendar.monthcalendar returns a list of weeks; each week is 7 ints (0 = padding)
+        # setfirstweekday(6) = Sunday, matching the Sun-Mon-...-Sat column headers in the template
+        calendar.setfirstweekday(6)
+        cal = calendar.monthcalendar(year, month)
 
-    # Compute prev/next month for navigation links
-    prev_year,  prev_month = (year - 1, 12) if month == 1  else (year, month - 1)
-    next_year,  next_month = (year + 1, 1)  if month == 12 else (year, month + 1)
+        # Compute prev/next month for navigation links
+        prev_year,  prev_month = (year - 1, 12) if month == 1  else (year, month - 1)
+        next_year,  next_month = (year + 1, 1)  if month == 12 else (year, month + 1)
 
-    raw_sources = [s[0] for s in session.query(Event.source).distinct().all()]
-    sources = sorted(raw_sources, key=lambda s: SOURCE_NAMES.get(s, s))
-    session.close()
+        raw_sources = [s[0] for s in session.query(Event.source).distinct().all()]
+        sources = sorted(raw_sources, key=lambda s: SOURCE_NAMES.get(s, s))
 
-    return render_template(
-        'calendar.html',
-        year=year, month=month,
-        month_name=calendar.month_name[month],
-        cal=cal,
-        events_by_day=events_by_day,
-        sources=sources,
-        source_names=SOURCE_NAMES,
-        source_colors=SOURCE_COLORS,
-        selected_sources=selected_sources,
-        prev_year=prev_year, prev_month=prev_month,
-        next_year=next_year, next_month=next_month,
-        today=date.today(),
-        total_events=len(events),
-    )
+        return render_template(
+            'calendar.html',
+            year=year, month=month,
+            month_name=calendar.month_name[month],
+            cal=cal,
+            events_by_day=events_by_day,
+            sources=sources,
+            source_names=SOURCE_NAMES,
+            source_colors=SOURCE_COLORS,
+            selected_sources=selected_sources,
+            prev_year=prev_year, prev_month=prev_month,
+            next_year=next_year, next_month=next_month,
+            today=date.today(),
+            total_events=len(events),
+        )
+    finally:
+        session.close()
 
 
 @app.route('/profile', methods=['GET', 'POST'])
@@ -341,75 +356,93 @@ def profile():
            Redirects back to GET after saving.
     """
     session = Session()
+    try:
+        if request.method == 'POST':
+            taste_prompt = request.form.get('taste_prompt', '').strip()
+            profile_row  = session.query(UserProfile).first()
+            if not profile_row:
+                profile_row = UserProfile()
+                session.add(profile_row)
+            profile_row.taste_prompt = taste_prompt
+            session.commit()
+            return redirect('/profile')
 
-    if request.method == 'POST':
-        taste_prompt = request.form.get('taste_prompt', '').strip()
-        profile_row  = session.query(UserProfile).first()
-        if not profile_row:
-            profile_row = UserProfile()
-            session.add(profile_row)
-        profile_row.taste_prompt = taste_prompt
-        session.commit()
+        profile_row     = session.query(UserProfile).first()
+        feedback_count  = session.query(FeedbackHistory).count()
+        liked_count     = session.query(FeedbackHistory).filter_by(interested=True).count()
+        disliked_count  = session.query(FeedbackHistory).filter_by(interested=False).count()
+
+        # Most recent 10 feedback entries for the activity feed
+        recent_feedback = session.query(FeedbackHistory).order_by(
+            FeedbackHistory.created_at.desc()
+        ).limit(10).all()
+
+        # Most recent 10 archived summaries for the history section
+        profile_history = session.query(PreferenceProfileHistory).order_by(
+            PreferenceProfileHistory.created_at.desc()
+        ).limit(10).all()
+
+        return render_template(
+            'profile.html',
+            profile=profile_row,
+            feedback_count=feedback_count,
+            liked_count=liked_count,
+            disliked_count=disliked_count,
+            recent_feedback=recent_feedback,
+            profile_history=profile_history,
+        )
+    finally:
         session.close()
-        return redirect('/profile')
-
-    profile_row     = session.query(UserProfile).first()
-    feedback_count  = session.query(FeedbackHistory).count()
-    liked_count     = session.query(FeedbackHistory).filter_by(interested=True).count()
-    disliked_count  = session.query(FeedbackHistory).filter_by(interested=False).count()
-
-    # Most recent 10 feedback entries for the activity feed
-    recent_feedback = session.query(FeedbackHistory).order_by(
-        FeedbackHistory.created_at.desc()
-    ).limit(10).all()
-
-    # Most recent 10 archived summaries for the history section
-    profile_history = session.query(PreferenceProfileHistory).order_by(
-        PreferenceProfileHistory.created_at.desc()
-    ).limit(10).all()
-
-    session.close()
-
-    return render_template(
-        'profile.html',
-        profile=profile_row,
-        feedback_count=feedback_count,
-        liked_count=liked_count,
-        disliked_count=disliked_count,
-        recent_feedback=recent_feedback,
-        profile_history=profile_history,
-    )
 
 
 @app.route('/pin', methods=['POST'])
 def pin():
     """Toggle the pinned/shortlist status of an event. Expects JSON: {"event_id": <int>}"""
-    event_id = request.json.get('event_id')
-    session  = Session()
-    event    = session.query(Event).get(event_id)
-    if not event:
+    data = request.json
+    if not data:
+        return jsonify({'status': 'error', 'message': 'No JSON data provided'}), 400
+    
+    event_id = data.get('event_id')
+    
+    # Validate input
+    if event_id is None:
+        return jsonify({'status': 'error', 'message': 'event_id is required'}), 400
+    if not isinstance(event_id, int):
+        return jsonify({'status': 'error', 'message': 'event_id must be an integer'}), 400
+    
+    session = Session()
+    try:
+        event = session.query(Event).get(event_id)
+        if not event:
+            return jsonify({'status': 'error', 'message': 'Event not found'}), 404
+        event.pinned = not event.pinned
+        session.commit()
+        pinned = event.pinned
+        return jsonify({'status': 'success', 'pinned': pinned})
+    finally:
         session.close()
-        return jsonify({'status': 'error', 'message': 'Event not found'}), 404
-    event.pinned = not event.pinned
-    session.commit()
-    pinned = event.pinned
-    session.close()
-    return jsonify({'status': 'success', 'pinned': pinned})
 
 
 @app.route('/profile/summary', methods=['POST'])
 def profile_summary():
     """Save a manually-edited preference_summary."""
     summary = request.form.get('preference_summary', '').strip()
+    
+    # Validate input length (prevent abuse)
+    if len(summary) > 10000:
+        return jsonify({'status': 'error', 'message': 'Preference summary too long (max 10000 characters)'}), 400
+    
     session = Session()
-    profile_row = session.query(UserProfile).first()
-    if not profile_row:
-        profile_row = UserProfile()
-        session.add(profile_row)
-    profile_row.preference_summary = summary
-    session.commit()
-    session.close()
-    return redirect('/profile')
+    try:
+        profile_row = session.query(UserProfile).first()
+        if not profile_row:
+            profile_row = UserProfile()
+            session.add(profile_row)
+        profile_row.preference_summary = summary
+        session.commit()
+        return redirect('/profile')
+    finally:
+        session.close()
 
 
 if __name__ == '__main__':

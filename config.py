@@ -46,12 +46,3 @@ DATABASE_URL = 'sqlite:///events.db'
 PHOENIX_LAT = 33.4484
 PHOENIX_LON = -112.0740
 SEARCH_RADIUS_MILES = 30  # Maximum distance from center to consider "local"
-
-# ---------------------------------------------------------------------------
-# Scraping schedule
-# ---------------------------------------------------------------------------
-
-# How often scraper_runner.py should be re-run when scheduled automatically.
-# Not enforced by the app itself — use cron, Task Scheduler, or a similar
-# external scheduler to call `python scraper_runner.py` on this interval.
-SCRAPE_INTERVAL_HOURS = 6

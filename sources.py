@@ -172,30 +172,6 @@ SITES = {
 # Derived display dicts (used by server/app.py)
 # ---------------------------------------------------------------------------
 # Built automatically from SITES so they never drift out of sync.
-# Legacy scraper keys are appended below for historical scraper_run records.
 
 SOURCE_NAMES = {key: entry[0] for key, entry in SITES.items()}
 SOURCE_COLORS = {key: entry[6] for key, entry in SITES.items()}
-
-# Legacy source keys from the old BeautifulSoup scrapers.
-# Kept so the /health dashboard can display names for historical scraper_run rows.
-_LEGACY_SOURCES = {
-    'phoenix_gov':        ('City of Phoenix',           ('#dbeafe', '#2563eb', '#1e3a8a')),
-    'tempe_gov':          ('City of Tempe',             ('#e0e7ff', '#4f46e5', '#312e81')),
-    'mesa_gov':           ('City of Mesa',              ('#ede9fe', '#7c3aed', '#4c1d95')),
-    'chandler_gov':       ('City of Chandler',          ('#fce7f3', '#db2777', '#831843')),
-    'scottsdale_gov':     ('City of Scottsdale',        ('#fee2e2', '#dc2626', '#7f1d1d')),
-    'gilbert_gov':        ('City of Gilbert',           ('#ffedd5', '#ea580c', '#7c2d12')),
-    'chandler_library':   ('Chandler Public Library',   ('#dcfce7', '#16a34a', '#14532d')),
-    'tempe_library':      ('Tempe Public Library',      ('#d1fae5', '#059669', '#064e3b')),
-    'fibbermagees':       ("Fibber Magee's",            ('#fff7ed', '#c2410c', '#7c2d12')),
-    'raisingarizonakids': ('Raising Arizona Kids',      ('#ecfeff', '#0891b2', '#164e63')),
-    'dbg':                ('Desert Botanical Garden',   ('#f0fdf4', '#22c55e', '#14532d')),
-    'odysea':             ('OdySea Aquarium',           ('#e0f2fe', '#0284c7', '#0c4a6e')),
-    'hale_theatre':       ('Hale Theatre Arizona',      ('#fef9c3', '#ca8a04', '#713f12')),
-    'eventbrite':         ('Eventbrite',                ('#fff1f2', '#f43f5e', '#881337')),
-}
-
-for key, (name, color) in _LEGACY_SOURCES.items():
-    SOURCE_NAMES[key]  = name
-    SOURCE_COLORS[key] = color

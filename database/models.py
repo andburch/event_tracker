@@ -32,7 +32,7 @@ class Event(Base):
     """
     A single scraped event.
 
-    Deduplication key: (title, date) — see scraper_runner.py.
+    Deduplication key: (title, date) — see llm_scraper.py scrape_and_save().
     The `score` column starts NULL and is populated by run_batch_scoring()
     after each scrape run. Keeping it nullable lets us distinguish "not yet
     scored" from "scored 0.0".

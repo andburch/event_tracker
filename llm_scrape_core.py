@@ -56,16 +56,9 @@ def _get_client() -> Groq:
 # ---------------------------------------------------------------------------
 # Model + schema
 # ---------------------------------------------------------------------------
-# llama3-70b-8192: More reliable model with better JSON compliance
-# Higher TPM limit than llama-3.1-8b-instant
-# ---------------------------------------------------------------------------
-# Models
-# ---------------------------------------------------------------------------
-# llama-3.3-70b-versatile: Default. Better output quality, higher TPM (12k vs 6k),
-#   but lower RPD (1k vs 14.4k). Use for most scraping.
-# llama-3.1-8b-instant: Faster/cheaper. Use via model=_MODEL_SMALL for simple pages.
-_MODEL       = 'llama-3.3-70b-versatile'
-_MODEL_SMALL = 'llama-3.1-8b-instant'
+# llama-3.3-70b-versatile: Better output quality, higher TPM (12k vs 6k),
+#   but lower RPD (1k vs 14.4k). Used for all scraping.
+_MODEL = 'llama-3.3-70b-versatile'
 
 EVENT_SCHEMA = {'type': 'json_object'}
 
@@ -85,7 +78,7 @@ _SPOOF_UA = (
 # HTML cleaning
 # ---------------------------------------------------------------------------
 
-def clean_html(html):
+def clean_html(html: str) -> str:
     """
     Convert raw HTML into clean plain text suitable for LLM consumption.
 
@@ -138,12 +131,15 @@ _CHUNK_SIZE    = 6_000    # chars per LLM call
 _CHUNK_OVERLAP = 300      # overlap between adjacent chunks to avoid boundary splits
 
 
-def _chunk_text(text):
+def _chunk_text(text: str):
     """
     Split text into overlapping windows for multi-call extraction.
 
+    Args:
+        text: Full text to chunk
+
     Yields:
-        (chunk_str, is_last) tuples
+        Tuples of (chunk_str, is_last)
     """
     step  = _CHUNK_SIZE - _CHUNK_OVERLAP
     total = len(text)
@@ -159,16 +155,22 @@ def _chunk_text(text):
 # LLM calls
 # ---------------------------------------------------------------------------
 
-def _ask_llm_single(text, current_url, site_hint='', is_last_chunk=True, retries=3, model=None):
+def _ask_llm_single(
+    text: str,
+    current_url: str,
+    site_hint: str = '',
+    is_last_chunk: bool = True,
+    retries: int = 3
+) -> dict:
     """
     Single LLM call for one chunk of page text.
 
     Args:
-        text:           Cleaned text chunk
-        current_url:    URL of the page (for context in prompt)
-        site_hint:      Short label like "Gilbert Gov"
-        is_last_chunk:  If False, skip pagination search (links only in last chunk)
-        retries:        Max retry attempts on 503/429 errors
+        text: Cleaned text chunk
+        current_url: URL of the page (for context in prompt)
+        site_hint: Short label like "Gilbert Gov"
+        is_last_chunk: If False, skip pagination search (links only in last chunk)
+        retries: Max retry attempts on 503/429 errors
 
     Returns:
         Dict with 'events' list and 'next_page_url' (str or None)
@@ -214,7 +216,7 @@ def _ask_llm_single(text, current_url, site_hint='', is_last_chunk=True, retries
     for attempt in range(retries):
         try:
             response = _get_client().chat.completions.create(
-                model=model or _MODEL,
+                model=_MODEL,
                 messages=[{'role': 'user', 'content': prompt}],
                 temperature=0.1,
                 response_format=EVENT_SCHEMA,
@@ -230,7 +232,7 @@ def _ask_llm_single(text, current_url, site_hint='', is_last_chunk=True, retries
                 raise
 
 
-def ask_llm(text, current_url, site_hint='', retries=3, model=None):
+def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = 3) -> dict:
     """
     Extract events from page text, chunking automatically for large pages.
 
@@ -238,17 +240,17 @@ def ask_llm(text, current_url, site_hint='', retries=3, model=None):
     overlapping chunks, merges results, and deduplicates by title.
 
     Args:
-        text:        Full cleaned page text from clean_html()
+        text: Full cleaned page text from clean_html()
         current_url: URL of the page being parsed
-        site_hint:   Short label for the LLM prompt
-        retries:     Passed through to each single-chunk call
+        site_hint: Short label for the LLM prompt
+        retries: Passed through to each single-chunk call
 
     Returns:
         Dict with 'events' (deduplicated list) and 'next_page_url' (str or None)
     """
     if len(text) <= _CHUNK_SIZE:
         return _ask_llm_single(text, current_url, site_hint,
-                               is_last_chunk=True, retries=retries, model=model)
+                               is_last_chunk=True, retries=retries)
 
     chunks = list(_chunk_text(text))
     n = len(chunks)
@@ -262,7 +264,7 @@ def ask_llm(text, current_url, site_hint='', retries=3, model=None):
         if i > 0:
             time.sleep(10)  # Increased delay to avoid rate limits
         result = _ask_llm_single(chunk, current_url, site_hint,
-                                 is_last_chunk=is_last, retries=retries, model=model)
+                                 is_last_chunk=is_last, retries=retries)
 
         for ev in result.get('events', []):
             key = (ev.get('title') or '').strip().lower()
@@ -279,11 +281,17 @@ def ask_llm(text, current_url, site_hint='', retries=3, model=None):
 # Page fetchers
 # ---------------------------------------------------------------------------
 
-def fetch_requests(url):
+def fetch_requests(url: str) -> str:
     """
     Fetch a static HTML page using requests (no JavaScript execution).
 
     SSL verification disabled for corporate firewall compatibility.
+    
+    Args:
+        url: URL to fetch
+    
+    Returns:
+        HTML content as string
     """
     urllib3.disable_warnings()
     r = requests.get(url, timeout=15, verify=False,
@@ -330,7 +338,7 @@ def close_driver():
         _selenium_driver = None
 
 
-def fetch_selenium(url, wait=6, scroll_passes=10):
+def fetch_selenium(url: str, wait: int = 6, scroll_passes: int = 10) -> str:
     """
     Fetch a URL using Selenium with CDP user-agent spoofing.
 
@@ -338,8 +346,8 @@ def fetch_selenium(url, wait=6, scroll_passes=10):
     CDP override patches both the HTTP User-Agent header and JS navigator.userAgent.
 
     Args:
-        url:          URL to fetch
-        wait:         Seconds to sleep after page load for JS rendering
+        url: URL to fetch
+        wait: Seconds to sleep after page load for JS rendering
         scroll_passes: Number of times to scroll to bottom (for lazy-loading pages)
 
     Returns:
@@ -356,8 +364,10 @@ def fetch_selenium(url, wait=6, scroll_passes=10):
 
     try:
         driver.get(url)
-    except Exception:
-        pass  # TimeoutException on slow pages -- partial HTML is still useful
+    except Exception as e:
+        # TimeoutException on slow pages -- partial HTML is still useful
+        # Log the error but continue with whatever HTML was loaded
+        print(f"    Page load timeout/error (continuing with partial HTML): {type(e).__name__}")
 
     time.sleep(wait)
 

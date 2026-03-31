@@ -36,7 +36,15 @@ pip install -r requirements.txt
 
 ### Run Scrapers
 ```bash
-python scraper_runner.py
+python llm_scraper.py              # scrape all sites
+python llm_scraper.py fibber mesa  # scrape specific sites
+python llm_scraper.py list         # show all available sites
+python llm_scraper.py --no-purge   # append without purging DB
+```
+
+### Run Batch Scoring
+```bash
+python score_events.py
 ```
 
 ### Start Web Server
@@ -47,7 +55,9 @@ Server runs on http://localhost:5000
 
 ### Test Individual Scrapers
 ```bash
-python test_new_scrapers.py
+python _test_llm_scrape.py <site_key>     # test one site
+python _test_llm_scrape.py <key> --dump   # test with raw HTML dump
+python _test_llm_scrape.py list           # show all sites
 ```
 
 ### Database Inspection
