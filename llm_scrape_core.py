@@ -28,11 +28,14 @@ KNOWN LIMITATIONS
   - Pages requiring login or special cookies are not supported.
 """
 
-import re, json, time, httpx, os, requests, urllib3
+import re, json, time, httpx, os, requests, urllib3, logging, threading
 from bs4 import BeautifulSoup
 from groq import Groq
 import config
 from sources import SITES
+
+# Configure logging
+log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
 # Groq client (lazy singleton)
@@ -127,10 +130,6 @@ def clean_html(html: str) -> str:
 # Text chunking
 # ---------------------------------------------------------------------------
 
-_CHUNK_SIZE    = 6_000    # chars per LLM call
-_CHUNK_OVERLAP = 300      # overlap between adjacent chunks to avoid boundary splits
-
-
 def _chunk_text(text: str):
     """
     Split text into overlapping windows for multi-call extraction.
@@ -141,11 +140,13 @@ def _chunk_text(text: str):
     Yields:
         Tuples of (chunk_str, is_last)
     """
-    step  = _CHUNK_SIZE - _CHUNK_OVERLAP
+    chunk_size = config.LLM_CHUNK_SIZE
+    chunk_overlap = config.LLM_CHUNK_OVERLAP
+    step  = chunk_size - chunk_overlap
     total = len(text)
     start = 0
     while start < total:
-        end = min(start + _CHUNK_SIZE, total)
+        end = min(start + chunk_size, total)
         yield text[start:end], (end >= total)
         if end >= total:
             break
@@ -160,7 +161,7 @@ def _ask_llm_single(
     current_url: str,
     site_hint: str = '',
     is_last_chunk: bool = True,
-    retries: int = 3
+    retries: int = None
 ) -> dict:
     """
     Single LLM call for one chunk of page text.
@@ -170,11 +171,14 @@ def _ask_llm_single(
         current_url: URL of the page (for context in prompt)
         site_hint: Short label like "Gilbert Gov"
         is_last_chunk: If False, skip pagination search (links only in last chunk)
-        retries: Max retry attempts on 503/429 errors
+        retries: Max retry attempts on 503/429 errors (defaults to config.LLM_MAX_RETRIES)
 
     Returns:
         Dict with 'events' list and 'next_page_url' (str or None)
     """
+    if retries is None:
+        retries = config.LLM_MAX_RETRIES
+    
     if is_last_chunk:
         pagination_instruction = (
             "2. Find the NEXT PAGE URL and put it in 'next_page_url'.\n"
@@ -225,35 +229,40 @@ def _ask_llm_single(
         except Exception as e:
             err = str(e)
             if ('503' in err or '429' in err) and attempt < retries - 1:
-                wait = 20 * (attempt + 1)
+                wait = config.LLM_RETRY_BASE_DELAY * (attempt + 1)
+                log.warning(f"{'503' if '503' in err else '429'} error, retrying in {wait}s...")
                 print(f"\n    {'503' if '503' in err else '429'} error, retrying in {wait}s...")
                 time.sleep(wait)
             else:
                 raise
 
 
-def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = 3) -> dict:
+def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = None) -> dict:
     """
     Extract events from page text, chunking automatically for large pages.
 
-    Single call for pages <= _CHUNK_SIZE chars. For larger pages, splits into
+    Single call for pages <= config.LLM_CHUNK_SIZE chars. For larger pages, splits into
     overlapping chunks, merges results, and deduplicates by title.
 
     Args:
         text: Full cleaned page text from clean_html()
         current_url: URL of the page being parsed
         site_hint: Short label for the LLM prompt
-        retries: Passed through to each single-chunk call
+        retries: Passed through to each single-chunk call (defaults to config.LLM_MAX_RETRIES)
 
     Returns:
         Dict with 'events' (deduplicated list) and 'next_page_url' (str or None)
     """
-    if len(text) <= _CHUNK_SIZE:
+    if retries is None:
+        retries = config.LLM_MAX_RETRIES
+    
+    if len(text) <= config.LLM_CHUNK_SIZE:
         return _ask_llm_single(text, current_url, site_hint,
                                is_last_chunk=True, retries=retries)
 
     chunks = list(_chunk_text(text))
     n = len(chunks)
+    log.info(f"Large page: {len(text)} chars -> {n} chunks")
     print(f"\n    large page: {len(text)} chars -> {n} chunks", end='  ')
 
     all_events  = []
@@ -262,7 +271,7 @@ def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = 3) 
 
     for i, (chunk, is_last) in enumerate(chunks):
         if i > 0:
-            time.sleep(10)  # Increased delay to avoid rate limits
+            time.sleep(config.LLM_CHUNK_DELAY)
         result = _ask_llm_single(chunk, current_url, site_hint,
                                  is_last_chunk=is_last, retries=retries)
 
@@ -301,7 +310,9 @@ def fetch_requests(url: str) -> str:
 
 # Module-level Selenium driver -- reused within a single site's page loop,
 # closed and reopened between sites via fetch_selenium.
+# Thread safety: Protected by a lock to prevent concurrent access
 _selenium_driver = None
+_driver_lock = threading.Lock()
 
 
 def get_driver():
@@ -310,32 +321,42 @@ def get_driver():
 
     Uses local chromedriver.exe in project root to avoid network downloads
     behind the corporate firewall.
+    
+    Thread-safe: Uses a lock to prevent concurrent driver creation.
     """
     global _selenium_driver
-    if _selenium_driver is None:
-        from selenium import webdriver
-        from selenium.webdriver.chrome.service import Service
-        from selenium.webdriver.chrome.options import Options
-        options = Options()
-        options.add_argument('--headless')
-        options.add_argument('--no-sandbox')
-        options.add_argument('--disable-dev-shm-usage')
-        options.add_argument('--ignore-certificate-errors')
-        options.add_argument('--disable-gpu')
-        options.add_argument('--window-size=1920,1080')
-        options.add_experimental_option('excludeSwitches', ['enable-logging'])
-        service = Service(os.path.join(os.getcwd(), 'chromedriver.exe'))
-        _selenium_driver = webdriver.Chrome(service=service, options=options)
-        _selenium_driver.set_page_load_timeout(30)
-    return _selenium_driver
+    with _driver_lock:
+        if _selenium_driver is None:
+            from selenium import webdriver
+            from selenium.webdriver.chrome.service import Service
+            from selenium.webdriver.chrome.options import Options
+            options = Options()
+            options.add_argument('--headless')
+            options.add_argument('--no-sandbox')
+            options.add_argument('--disable-dev-shm-usage')
+            options.add_argument('--ignore-certificate-errors')
+            options.add_argument('--disable-gpu')
+            options.add_argument('--window-size=1920,1080')
+            options.add_experimental_option('excludeSwitches', ['enable-logging'])
+            service = Service(os.path.join(os.getcwd(), 'chromedriver.exe'))
+            _selenium_driver = webdriver.Chrome(service=service, options=options)
+            _selenium_driver.set_page_load_timeout(30)
+            log.info("Created new Selenium WebDriver instance")
+        return _selenium_driver
 
 
 def close_driver():
-    """Quit Chrome and release the driver reference."""
+    """
+    Quit Chrome and release the driver reference.
+    
+    Thread-safe: Uses a lock to prevent concurrent access.
+    """
     global _selenium_driver
-    if _selenium_driver:
-        _selenium_driver.quit()
-        _selenium_driver = None
+    with _driver_lock:
+        if _selenium_driver:
+            _selenium_driver.quit()
+            _selenium_driver = None
+            log.info("Closed Selenium WebDriver")
 
 
 def fetch_selenium(url: str, wait: int = 6, scroll_passes: int = 10) -> str:
@@ -367,6 +388,7 @@ def fetch_selenium(url: str, wait: int = 6, scroll_passes: int = 10) -> str:
     except Exception as e:
         # TimeoutException on slow pages -- partial HTML is still useful
         # Log the error but continue with whatever HTML was loaded
+        log.warning(f"Page load timeout/error (continuing with partial HTML): {type(e).__name__}")
         print(f"    Page load timeout/error (continuing with partial HTML): {type(e).__name__}")
 
     time.sleep(wait)

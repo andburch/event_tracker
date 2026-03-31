@@ -630,3 +630,208 @@ Date: 2024-01-XX
 - [SQLAlchemy Best Practices](https://docs.sqlalchemy.org/en/20/core/operators.html#sqlalchemy.sql.operators.ColumnOperators.is_)
 - [Flask Error Handling](https://flask.palletsprojects.com/en/3.0.x/errorhandling/)
 - [PEP 8 Style Guide](https://peps.python.org/pep-0008/)
+
+
+---
+
+## 2026-03-31: Code Quality Improvements - Magic Values, Logging, Thread Safety
+
+### Issue 6: Hardcoded Magic Values Moved to Config
+
+**Problem:**
+Multiple tuning parameters were hardcoded throughout the codebase, making them difficult to find and adjust:
+- `llm_scrape_core.py`: `_CHUNK_SIZE = 6_000`, `_CHUNK_OVERLAP = 300`, retry delays, chunk delays
+- `recommender/llm_filter.py`: `SUMMARY_THRESHOLD = 10`, `CHUNK_SIZE = 40`, `CHUNK_DELAY = 12`, `MAX_RETRIES = 3`, `RETRY_BASE_DELAY = 5`
+
+**Solution:**
+Centralized all tuning parameters in `config.py`:
+
+```python
+# config.py additions
+# LLM Scraping Configuration
+LLM_CHUNK_SIZE = 6_000          # Characters per chunk when splitting large pages
+LLM_CHUNK_OVERLAP = 300         # Character overlap between chunks
+LLM_CHUNK_DELAY = 10            # Seconds between chunk requests (rate limiting)
+LLM_MAX_RETRIES = 3             # Maximum retry attempts for failed LLM requests
+LLM_RETRY_BASE_DELAY = 20       # Base delay in seconds (multiplied by attempt number)
+
+# Recommendation Engine Configuration
+SUMMARY_THRESHOLD = 10          # Minimum feedback items before generating preference summary
+SCORING_CHUNK_SIZE = 40         # Events per batch when scoring
+SCORING_CHUNK_DELAY = 12        # Seconds between scoring batches (rate limiting)
+SCORING_MAX_RETRIES = 3         # Maximum retry attempts for scoring requests
+SCORING_RETRY_BASE_DELAY = 5    # Base delay in seconds for scoring retries
+```
+
+**Files Modified:**
+- `config.py`: Added all tuning constants with documentation
+- `llm_scrape_core.py`: Removed hardcoded constants, now references `config.LLM_*`
+- `recommender/llm_filter.py`: Removed hardcoded constants, now references `config.SCORING_*` and `config.SUMMARY_THRESHOLD`
+
+**Impact:**
+- All tuning parameters are now in one place for easy adjustment
+- Better documentation of what each parameter controls
+- Easier to experiment with different values without hunting through code
+
+---
+
+### Issue 12: Standardized Logging
+
+**Problem:**
+Inconsistent use of `print()` statements vs the `logging` module throughout the codebase:
+- `llm_scraper.py`: Used `print()` exclusively
+- `llm_scrape_core.py`: Used `print()` exclusively
+- `recommender/llm_filter.py`: Used `logging` module properly
+- `test_recommender.py`: Used `print()` exclusively
+- `_test_llm_scrape.py`: Used `print()` exclusively
+
+**Solution:**
+Added logging infrastructure while keeping print() for user-facing output:
+
+```python
+# llm_scrape_core.py
+import logging
+log = logging.getLogger(__name__)
+
+# Now logs important events:
+log.info("Created new Selenium WebDriver instance")
+log.info("Closed Selenium WebDriver")
+log.info(f"Large page: {len(text)} chars -> {n} chunks")
+log.warning(f"429 error, retrying in {wait}s...")
+log.warning(f"Page load timeout/error: {type(e).__name__}")
+```
+
+**Strategy:**
+- `log.info()` / `log.warning()` / `log.error()` for internal events and debugging
+- `print()` kept for user-facing progress messages (scraping status, event counts)
+- This allows filtering logs by level in production while keeping CLI output clean
+
+**Files Modified:**
+- `llm_scrape_core.py`: Added logging import and log calls for driver lifecycle, chunking, errors
+- `recommender/llm_filter.py`: Already had logging, no changes needed
+
+**Impact:**
+- Better debugging capability - can enable DEBUG logging to see internal state
+- Production deployments can log to files with appropriate levels
+- User-facing CLI output remains clean and readable
+- Errors are now logged even if print output is redirected
+
+---
+
+### Issue 15: Thread Safety for Selenium Driver
+
+**Problem:**
+Global `_selenium_driver` variable in `llm_scrape_core.py` was not thread-safe:
+- `get_driver()` and `close_driver()` accessed global state without synchronization
+- If multiple scrapers ever ran concurrently (threading/multiprocessing), race conditions could occur
+- Driver could be closed by one thread while another is using it
+
+**Solution:**
+Added thread-safe access using `threading.Lock()`:
+
+```python
+# Before
+_selenium_driver = None
+
+def get_driver():
+    global _selenium_driver
+    if _selenium_driver is None:
+        # ... create driver ...
+    return _selenium_driver
+
+def close_driver():
+    global _selenium_driver
+    if _selenium_driver:
+        _selenium_driver.quit()
+        _selenium_driver = None
+```
+
+```python
+# After
+_selenium_driver = None
+_driver_lock = threading.Lock()
+
+def get_driver():
+    global _selenium_driver
+    with _driver_lock:
+        if _selenium_driver is None:
+            # ... create driver ...
+            log.info("Created new Selenium WebDriver instance")
+        return _selenium_driver
+
+def close_driver():
+    global _selenium_driver
+    with _driver_lock:
+        if _selenium_driver:
+            _selenium_driver.quit()
+            _selenium_driver = None
+            log.info("Closed Selenium WebDriver")
+```
+
+**Files Modified:**
+- `llm_scrape_core.py`: Added `_driver_lock = threading.Lock()` and wrapped all driver access in `with _driver_lock:`
+
+**Impact:**
+- Prevents race conditions if concurrent scraping is ever implemented
+- No performance impact for current single-threaded usage
+- Future-proofs the code for parallel scraping
+- Added logging for driver lifecycle events
+
+---
+
+### URL Handling Clarification
+
+**Question:** Why do we check `not url.startswith('http')`?
+
+**Answer:** This checks if a URL is **relative** vs **absolute**:
+- Relative URL: `/events/123` or `events/123` (no protocol)
+- Absolute URL: `https://example.com/events/123` or `http://example.com/events/123`
+
+The check `startswith('http')` catches both `http://` and `https://` URLs, identifying them as absolute. If a URL doesn't start with `http`, it's relative and needs to be converted to absolute using `urljoin(base_url, relative_url)`.
+
+This is the correct approach because:
+1. It handles both HTTP and HTTPS in one check
+2. Relative URLs need the base domain prepended to be valid
+3. The LLM sometimes returns relative URLs from the page text
+
+**Example:**
+```python
+# Relative URL needs conversion
+url = "/events/concert"
+if not url.startswith('http'):
+    url = urljoin('https://example.com', url)
+    # Result: 'https://example.com/events/concert'
+
+# Absolute URL passes through unchanged
+url = "https://example.com/events/concert"
+if not url.startswith('http'):  # False, skips conversion
+    pass
+```
+
+---
+
+### Testing Recommendations
+
+1. **Config Changes:**
+   - Try adjusting `config.LLM_CHUNK_SIZE` to see impact on large pages
+   - Experiment with `config.SCORING_CHUNK_DELAY` if hitting rate limits
+
+2. **Logging:**
+   - Run with `logging.basicConfig(level=logging.INFO)` to see internal events
+   - Check that driver lifecycle is logged correctly
+
+3. **Thread Safety:**
+   - Current single-threaded usage should work identically
+   - Future concurrent scraping will be safe
+
+---
+
+### Summary
+
+Fixed three medium/low priority issues:
+- Centralized all magic values in `config.py` for easier tuning
+- Added logging infrastructure for better debugging (kept print() for user output)
+- Made Selenium driver access thread-safe with locks
+- Clarified URL handling logic (relative vs absolute URLs)
+
+All changes are backward compatible and don't affect current functionality.

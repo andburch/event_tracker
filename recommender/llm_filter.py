@@ -36,16 +36,11 @@ import config
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Tuning constants
+# Model selection
 # ---------------------------------------------------------------------------
 
-SUMMARY_THRESHOLD = 10          # Regenerate preference summary every N new feedbacks
 SCORE_MODEL       = 'llama-3.1-8b-instant'     # Fast model for batch scoring
 SUMMARY_MODEL     = 'llama-3.3-70b-versatile'  # Smarter model for preference summarization
-CHUNK_SIZE        = 40          # Events per scoring API call (keeps prompts under token limits)
-CHUNK_DELAY       = 12          # Seconds between chunks — free tier cap is ~6000 tokens/min
-MAX_RETRIES       = 3           # Retry attempts on rate limit / transient errors
-RETRY_BASE_DELAY  = 5           # Seconds; doubles each retry: 5s, 10s, 20s
 
 # ---------------------------------------------------------------------------
 # Groq client (lazy singleton)
@@ -82,19 +77,20 @@ def _call_with_retry(fn, *args, **kwargs):
     """
     Call fn(*args, **kwargs) with exponential backoff on rate limit errors.
 
-    Retries up to MAX_RETRIES times. Delay doubles each attempt (5s, 10s, 20s).
+    Retries up to config.SCORING_MAX_RETRIES times. Delay doubles each attempt (5s, 10s, 20s).
     Re-raises on final failure or on non-rate-limit API errors.
     """
-    for attempt in range(MAX_RETRIES):
+    max_retries = config.SCORING_MAX_RETRIES
+    for attempt in range(max_retries):
         try:
             return fn(*args, **kwargs)
         except RateLimitError as e:
-            wait = RETRY_BASE_DELAY * (2 ** attempt)
-            log.warning(f"Rate limit hit (attempt {attempt+1}/{MAX_RETRIES}). Waiting {wait}s... [{e}]")
-            if attempt < MAX_RETRIES - 1:
+            wait = config.SCORING_RETRY_BASE_DELAY * (2 ** attempt)
+            log.warning(f"Rate limit hit (attempt {attempt+1}/{max_retries}). Waiting {wait}s... [{e}]")
+            if attempt < max_retries - 1:
                 time.sleep(wait)
             else:
-                log.error(f"Rate limit exceeded after {MAX_RETRIES} attempts. Giving up.")
+                log.error(f"Rate limit exceeded after {max_retries} attempts. Giving up.")
                 raise
         except APIStatusError as e:
             # Non-retryable API error (e.g. invalid key, bad request)
@@ -208,15 +204,16 @@ def run_batch_scoring(session=None, rescore_all: bool = False) -> None:
             return
 
         label = "all future" if rescore_all else "unscored"
-        print(f"Batch scoring {len(events)} {label} events in chunks of {CHUNK_SIZE}...")
+        chunk_size = config.SCORING_CHUNK_SIZE
+        print(f"Batch scoring {len(events)} {label} events in chunks of {chunk_size}...")
         log.info(f"Batch scoring {len(events)} {label} events")
 
         all_scores = {}  # Accumulate {event_id: score} across all chunks for final summary
 
-        for i in range(0, len(events), CHUNK_SIZE):
-            chunk      = events[i:i + CHUNK_SIZE]
-            chunk_num  = i // CHUNK_SIZE + 1
-            total_chunks = (len(events) + CHUNK_SIZE - 1) // CHUNK_SIZE
+        for i in range(0, len(events), chunk_size):
+            chunk      = events[i:i + chunk_size]
+            chunk_num  = i // chunk_size + 1
+            total_chunks = (len(events) + chunk_size - 1) // chunk_size
 
             try:
                 chunk_scores = _call_batch_score(chunk, taste_prompt, preference_summary)
@@ -231,8 +228,8 @@ def run_batch_scoring(session=None, rescore_all: bool = False) -> None:
                 print(f"  Chunk {chunk_num}/{total_chunks} done ({len(chunk_scores)} scored)")
 
                 # Throttle to stay under Groq free-tier token rate limit
-                if i + CHUNK_SIZE < len(events):
-                    time.sleep(CHUNK_DELAY)
+                if i + chunk_size < len(events):
+                    time.sleep(config.SCORING_CHUNK_DELAY)
 
             except Exception as e:
                 log.error(f"Chunk {chunk_num} failed permanently: {e}")
@@ -359,7 +356,7 @@ def maybe_update_preference_summary() -> None:
     Check if enough new feedback has accumulated to warrant a summary refresh.
 
     Called from the /feedback endpoint after every thumbs-up / thumbs-down.
-    Does nothing if fewer than SUMMARY_THRESHOLD new feedbacks have arrived
+    Does nothing if fewer than config.SUMMARY_THRESHOLD new feedbacks have arrived
     since the last summary generation.
 
     When a new summary is generated:
@@ -381,7 +378,7 @@ def maybe_update_preference_summary() -> None:
         new_since_last   = total_feedback - (profile.feedback_count_at_last_summary or 0)
 
         # Not enough new feedback yet — skip
-        if new_since_last < SUMMARY_THRESHOLD:
+        if new_since_last < config.SUMMARY_THRESHOLD:
             return
 
         print(f"Updating preference summary ({new_since_last} new feedbacks)...")

@@ -46,3 +46,27 @@ DATABASE_URL = 'sqlite:///events.db'
 PHOENIX_LAT = 33.4484
 PHOENIX_LON = -112.0740
 SEARCH_RADIUS_MILES = 30  # Maximum distance from center to consider "local"
+
+# ---------------------------------------------------------------------------
+# LLM Scraping Configuration
+# ---------------------------------------------------------------------------
+
+# Text chunking parameters for large pages that exceed LLM context limits
+LLM_CHUNK_SIZE = 6_000      # Characters per chunk when splitting large pages
+LLM_CHUNK_OVERLAP = 300     # Character overlap between chunks to preserve context
+LLM_CHUNK_DELAY = 10        # Seconds to wait between chunk requests (rate limiting)
+
+# Retry configuration for LLM API calls
+LLM_MAX_RETRIES = 3         # Maximum retry attempts for failed LLM requests
+LLM_RETRY_BASE_DELAY = 20   # Base delay in seconds (multiplied by attempt number)
+
+# ---------------------------------------------------------------------------
+# Recommendation Engine Configuration
+# ---------------------------------------------------------------------------
+
+# Batch scoring parameters
+SUMMARY_THRESHOLD = 10      # Minimum feedback items before generating preference summary
+SCORING_CHUNK_SIZE = 40     # Events per batch when scoring
+SCORING_CHUNK_DELAY = 12    # Seconds between scoring batches (rate limiting)
+SCORING_MAX_RETRIES = 3     # Maximum retry attempts for scoring requests
+SCORING_RETRY_BASE_DELAY = 5  # Base delay in seconds for scoring retries
