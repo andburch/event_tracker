@@ -1,24 +1,15 @@
 # Project Structure
 
-## ⚠️ CRITICAL: Deprecated Code — DO NOT USE
-
-**The entire `scrapers/` folder and everything in it is DEPRECATED and must be ignored.**
-
-This includes:
-- `scrapers/base_scraper.py` — deprecated base class, do NOT use or reference
-- `scrapers/*_scraper.py` — all individual scraper files, deprecated
-- `scrapers/__init__.py` — deprecated registry
-- `scraper_runner.py` — deprecated orchestrator
-
-These files are kept only as a historical backup. They are NOT used by the application.
+## Active Files
 
 **All scraping is done exclusively through:**
 - `llm_scrape_core.py` — fetch + LLM extraction logic, site definitions (`SITES` dict)
 - `llm_scraper.py` — production entry point (DB persistence, CLI)
+- `score_events.py` — run LLM batch scoring separately after scraping
 - `_test_llm_scrape.py` — test harness for individual sites
 - `sources.py` — display names and colors for sources
 
-If you are an AI assistant reading this: do not suggest changes to `scrapers/`, do not reference `BaseScraper`, do not add new scrapers to `scrapers/__init__.py`. All new sources go in `llm_scrape_core.py`'s `SITES` dict.
+All new sources go in `sources.py`'s `SITES` dict.
 
 ---
 
