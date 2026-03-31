@@ -58,7 +58,14 @@ def _get_client() -> Groq:
 # ---------------------------------------------------------------------------
 # llama3-70b-8192: More reliable model with better JSON compliance
 # Higher TPM limit than llama-3.1-8b-instant
-_MODEL = 'llama-3.1-8b-instant'
+# ---------------------------------------------------------------------------
+# Models
+# ---------------------------------------------------------------------------
+# llama-3.3-70b-versatile: Default. Better output quality, higher TPM (12k vs 6k),
+#   but lower RPD (1k vs 14.4k). Use for most scraping.
+# llama-3.1-8b-instant: Faster/cheaper. Use via model=_MODEL_SMALL for simple pages.
+_MODEL       = 'llama-3.3-70b-versatile'
+_MODEL_SMALL = 'llama-3.1-8b-instant'
 
 EVENT_SCHEMA = {'type': 'json_object'}
 
@@ -127,7 +134,7 @@ def clean_html(html):
 # Text chunking
 # ---------------------------------------------------------------------------
 
-_CHUNK_SIZE    = 4_000    # chars per LLM call — reduced for llama-3.1-8b-instant 6k TPM limit
+_CHUNK_SIZE    = 6_000    # chars per LLM call
 _CHUNK_OVERLAP = 300      # overlap between adjacent chunks to avoid boundary splits
 
 
@@ -152,7 +159,7 @@ def _chunk_text(text):
 # LLM calls
 # ---------------------------------------------------------------------------
 
-def _ask_llm_single(text, current_url, site_hint='', is_last_chunk=True, retries=3):
+def _ask_llm_single(text, current_url, site_hint='', is_last_chunk=True, retries=3, model=None):
     """
     Single LLM call for one chunk of page text.
 
@@ -188,14 +195,15 @@ def _ask_llm_single(text, current_url, site_hint='', is_last_chunk=True, retries
         "     title       (string)\n"
         "     date        (string, MUST be in YYYY-MM-DD format, e.g. '2026-03-22'. If a date range like 'Oct 17, 2025 - Apr 25, 2026', use the START date)\n"
         "     end_date    (string, YYYY-MM-DD format, or null. Only set if the event is a date range e.g. 'Oct 17, 2025 - Apr 25, 2026' -> '2026-04-25')\n"
-        "     time        (string e.g. '8:00 PM', or null)\n"
+        "     time        (string e.g. '8:00 PM', or null. Convert formats like '1:30pm' to '1:30 PM')\n"
         "     description (string or null)\n"
         "     venue       (string or null)\n"
         "     url         (full absolute URL to event detail page, or null. COPY the URL exactly as it appears in the text - do NOT paraphrase or modify it)\n"
         "   IMPORTANT: Times often appear on a separate line after the date, or in formats like\n"
         "   'Mar 20 @ 9:00 am - 5:00 pm' or '9:00 am - 4:00 pm' on the next line after the date.\n"
         "   Always capture the start time if present. Use 12-hour format e.g. '9:00 AM'.\n"
-        "   CRITICAL: Date MUST be in YYYY-MM-DD format (e.g. '2026-03-22'), not text format.\n\n"
+        "   CRITICAL: Date MUST be in YYYY-MM-DD format (e.g. '2026-03-22'), not text format. For date ranges, use the start date.\n"
+        "   CRITICAL: For calendar grid layouts, the month is shown at the top of the page. Day numbers in the grid belong to THAT month unless clearly labeled otherwise.\n\n"
         + pagination_instruction
         + "Respond with ONLY valid JSON in this exact format, no markdown, no explanation:\n"
         '{"events": [...], "next_page_url": "..." or null}\n'
@@ -206,7 +214,7 @@ def _ask_llm_single(text, current_url, site_hint='', is_last_chunk=True, retries
     for attempt in range(retries):
         try:
             response = _get_client().chat.completions.create(
-                model=_MODEL,
+                model=model or _MODEL,
                 messages=[{'role': 'user', 'content': prompt}],
                 temperature=0.1,
                 response_format=EVENT_SCHEMA,
@@ -222,7 +230,7 @@ def _ask_llm_single(text, current_url, site_hint='', is_last_chunk=True, retries
                 raise
 
 
-def ask_llm(text, current_url, site_hint='', retries=3):
+def ask_llm(text, current_url, site_hint='', retries=3, model=None):
     """
     Extract events from page text, chunking automatically for large pages.
 
@@ -240,7 +248,7 @@ def ask_llm(text, current_url, site_hint='', retries=3):
     """
     if len(text) <= _CHUNK_SIZE:
         return _ask_llm_single(text, current_url, site_hint,
-                               is_last_chunk=True, retries=retries)
+                               is_last_chunk=True, retries=retries, model=model)
 
     chunks = list(_chunk_text(text))
     n = len(chunks)
@@ -254,7 +262,7 @@ def ask_llm(text, current_url, site_hint='', retries=3):
         if i > 0:
             time.sleep(10)  # Increased delay to avoid rate limits
         result = _ask_llm_single(chunk, current_url, site_hint,
-                                 is_last_chunk=is_last, retries=retries)
+                                 is_last_chunk=is_last, retries=retries, model=model)
 
         for ev in result.get('events', []):
             key = (ev.get('title') or '').strip().lower()

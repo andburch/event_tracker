@@ -92,8 +92,8 @@ SITES = {
     # --- Libraries ---
     'chandler_lib': (
         'Chandler Public Library',
-        'https://chandler.bibliocommons.com/v2/events',
-        True, 5, 5, '',
+        f'https://chandler.bibliocommons.com/v2/events?start={_today}&end={_plus90}',
+        True, 5, 3, 'BiblioCommons - date range URL, &page=N pagination',
         ('#dcfce7', '#16a34a', '#14532d'),
     ),
     'tempe_lib': (
@@ -136,7 +136,7 @@ SITES = {
     ),
     'tca': (
         'Tempe Center for the Arts',
-        'https://www.tempecenterforthearts.com/events/calendar',
+        'https://www.tempecenterforthearts.com/events/tca-advanced-components/events-calendar',
         True, 15, 5, 'Akamai bot detection',
         ('#f5d0fe', '#c026d3', '#4a044e'),
     ),
@@ -148,16 +148,10 @@ SITES = {
     ),
 
     # --- Previously disabled venues (now using LLM scraper) ---
-    'kidsoutandabout': (
-        'Kids Out and About',
-        'https://www.kidsoutandabout.com/phoenix-az',
-        True, 8, 5, 'Previously had timeout issues',
-        ('#f0fdfa', '#0d9488', '#134e4a'),
-    ),
     'dbg': (
         'Desert Botanical Garden',
         'https://www.dbg.org/events/',
-        True, 10, 5, 'Previously blocked by corporate firewall',
+        True, 10, 1, 'Single page, no per-event URLs',
         ('#f0fdf4', '#22c55e', '#14532d'),
     ),
     'odysea': (
@@ -196,7 +190,6 @@ _LEGACY_SOURCES = {
     'tempe_library':      ('Tempe Public Library',      ('#d1fae5', '#059669', '#064e3b')),
     'fibbermagees':       ("Fibber Magee's",            ('#fff7ed', '#c2410c', '#7c2d12')),
     'raisingarizonakids': ('Raising Arizona Kids',      ('#ecfeff', '#0891b2', '#164e63')),
-    'kidsoutandabout':    ('Kids Out and About',        ('#f0fdfa', '#0d9488', '#134e4a')),
     'dbg':                ('Desert Botanical Garden',   ('#f0fdf4', '#22c55e', '#14532d')),
     'odysea':             ('OdySea Aquarium',           ('#e0f2fe', '#0284c7', '#0c4a6e')),
     'hale_theatre':       ('Hale Theatre Arizona',      ('#fef9c3', '#ca8a04', '#713f12')),

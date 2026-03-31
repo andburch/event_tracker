@@ -5,18 +5,18 @@ Imports all fetch/LLM/site logic from llm_scrape_core. This file only
 contains DB persistence, date parsing, and the CLI entry point.
 
 Usage:
-    python llm_scraper.py              # purge events + scrape all sites
+    python llm_scraper.py              # scrape all sites
     python llm_scraper.py --no-purge   # append to existing events
     python llm_scraper.py <key> [<key2> ...]  # scrape specific sites only
     python llm_scraper.py list         # show all site keys
 
-After scraping, runs LLM batch scoring automatically.
+Run scoring separately after scraping:
+    python score_events.py
 """
 
 import sys, time, re
 from datetime import datetime, timedelta, date as date_type
 from database.models import Session, Event, ScraperRun
-from recommender.llm_filter import run_batch_scoring
 from llm_scrape_core import (
     fetch_requests, fetch_selenium, close_driver,
     clean_html, ask_llm, SITES,
@@ -42,7 +42,14 @@ def parse_date(date_str, time_str):
     # Primary format: YYYY-MM-DD (as requested from LLM)
     try:
         if time_str:
-            combined = f"{date_str} {time_str.strip()}"
+            # Take only the start time from ranges like "1:30 PM - 3:00 PM"
+            time_str = time_str.split('-')[0].strip()
+            # Normalize various am/pm formats to "H:MM AM/PM"
+            # Handles: "1:30pm", "1:30 p.m.", "1:30 P.M.", etc.
+            time_str = re.sub(r'\s*p\.m\.', ' PM', time_str, flags=re.IGNORECASE)
+            time_str = re.sub(r'\s*a\.m\.', ' AM', time_str, flags=re.IGNORECASE)
+            time_str = re.sub(r'(\d)(am|pm)$', lambda m: m.group(1) + ' ' + m.group(2).upper(), time_str, flags=re.IGNORECASE)
+            combined = f"{date_str} {time_str}"
             # Try with time first
             for time_fmt in ['%Y-%m-%d %I:%M %p', '%Y-%m-%d %I:%M%p', '%Y-%m-%d %H:%M']:
                 try:
@@ -121,6 +128,32 @@ def scrape_and_save(key, name, start_url, use_selenium, wait, max_pages, session
                     success = False
                     error_message = str(e)
 
+    elif key == 'chandler_lib':
+        # BiblioCommons date-range URL with &page=N pagination
+        print(f"  Explicit pagination: {max_pages} pages")
+        for page_num in range(1, max_pages + 1):
+            url = f"{start_url}&page={page_num}" if page_num > 1 else start_url
+            print(f"  Page {page_num}: {url[:80]}")
+            try:
+                html = fetch_selenium(url, wait) if use_selenium else fetch_requests(url)
+                text = clean_html(html)
+                print(f"    text={len(text)} chars", end='  ')
+                result = ask_llm(text, current_url=url, site_hint=name)
+                page_events = result.get('events', [])
+                all_events.extend(page_events)
+                print(f"events={len(page_events)}")
+                if not page_events:
+                    print(f"    No events, stopping")
+                    break
+                if page_num < max_pages:
+                    time.sleep(2)
+            except Exception as e:
+                print(f"\n    ERROR on page {page_num}: {e}")
+                if page_num == 1:
+                    success = False
+                    error_message = str(e)
+                break
+
     elif key == 'mesa':
         # pageindex=N pagination (1-indexed), filters baked into URL
         print(f"  Explicit pagination: {max_pages} pages")
@@ -146,6 +179,47 @@ def scrape_and_save(key, name, start_url, use_selenium, wait, max_pages, session
                     success = False
                     error_message = str(e)
                 break
+
+    elif key == 'azmnh':
+        # JS pagination via nextPage() onclick - no URL change
+        from selenium.webdriver.common.by import By
+        from llm_scrape_core import get_driver, close_driver
+
+        close_driver()
+        driver = get_driver()
+        driver.execute_cdp_cmd('Network.setUserAgentOverride', {
+            'userAgent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+            'acceptLanguage': 'en-US,en;q=0.9', 'platform': 'Win32',
+        })
+        try:
+            driver.get(start_url)
+        except Exception:
+            pass
+        time.sleep(wait)
+
+        for page_num in range(1, max_pages + 1):
+            text = clean_html(driver.page_source)
+            print(f"  page {page_num}: text={len(text)} chars", end='  ')
+            result = ask_llm(text, current_url=start_url, site_hint=name)
+            page_events = result.get('events', [])
+            all_events.extend(page_events)
+            print(f"events={len(page_events)}")
+
+            # Try to click the next page button
+            try:
+                next_btn = driver.find_element(By.CSS_SELECTOR, "li.nextLink a.page-link")
+                parent = driver.find_element(By.CSS_SELECTOR, "li.nextLink")
+                style = parent.get_attribute('style') or ''
+                if 'display: none' in style or 'display:none' in style:
+                    print(f"    Last page reached")
+                    break
+                driver.execute_script("arguments[0].click();", next_btn)
+                time.sleep(3)
+            except Exception as e:
+                print(f"    No next button, stopping")
+                break
+
+        close_driver()
 
     elif key == 'phoenix':
         # JS pagination - click Next button (no URL change)
@@ -189,23 +263,35 @@ def scrape_and_save(key, name, start_url, use_selenium, wait, max_pages, session
 
         close_driver()
 
-    elif key == 'gilbert':
+    elif key in ('tca', 'gilbert'):
         # Month-view calendar with /-curm-M/-cury-YYYY/ URL pattern
-        print(f"  Multi-month scraping: {max_pages} months")
+        # Day numbers are bare in the grid - inject full dates so LLM doesn't get confused
+        import calendar as cal_mod
+        base_urls = {
+            'tca':     'https://www.tempecenterforthearts.com/events/tca-advanced-components/events-calendar',
+            'gilbert': 'https://www.gilbertaz.gov/residents/calendar-month-view',
+        }
+        print(f"  Multi-month scraping: 3 months")
         base_date = datetime.now()
-        for i in range(max_pages):
+        for i in range(3):
             month_date = base_date + timedelta(days=30*i)
-            url = f"https://www.gilbertaz.gov/residents/calendar-month-view/-curm-{month_date.month}/-cury-{month_date.year}"
+            url = f"{base_urls[key]}/-curm-{month_date.month}/-cury-{month_date.year}"
+            month_hint = f"{name} - {month_date.strftime('%B %Y')}"
             print(f"  Month {i+1}: {url}")
             try:
                 html = fetch_selenium(url, wait)
                 text = clean_html(html)
+                # Replace bare day numbers with full dates so LLM assigns correct month
+                month_name = month_date.strftime('%B')
+                days_in_month = cal_mod.monthrange(month_date.year, month_date.month)[1]
+                for day in range(1, days_in_month + 1):
+                    text = re.sub(rf'(?m)^{day}$', f'{month_name} {day}, {month_date.year}:', text)
                 print(f"    text={len(text)} chars", end='  ')
-                result = ask_llm(text, current_url=url, site_hint=name)
+                result = ask_llm(text, current_url=url, site_hint=month_hint)
                 page_events = result.get('events', [])
                 all_events.extend(page_events)
                 print(f"events={len(page_events)}")
-                if i < max_pages - 1:
+                if i < 2:
                     time.sleep(2)
             except Exception as e:
                 print(f"\n    ERROR on month {i+1}: {e}")
@@ -310,10 +396,6 @@ def scrape_and_save(key, name, start_url, use_selenium, wait, max_pages, session
                     event_dt = today  # Currently running - use today
             except ValueError:
                 pass
-
-        # Skip events with past dates (single-date events that already happened)
-        if event_dt < today:
-            continue
 
         existing = session.query(Event).filter_by(title=title, date=event_dt).first()
         if not existing:
@@ -421,9 +503,6 @@ def main():
     finally:
         close_driver()
         session.close()
-
-    print("\nRunning batch event scoring...")
-    run_batch_scoring()
 
 
 if __name__ == '__main__':

@@ -30,11 +30,9 @@ from recommender.llm_filter import score_events, get_profile, maybe_update_prefe
 from datetime import datetime, timedelta, date
 import calendar
 from sqlalchemy import func
-from scrapers import SCRAPERS, DISABLED_SCRAPERS
+from sources import SITES, SOURCE_NAMES, SOURCE_COLORS
 
 app = Flask(__name__)
-
-from sources import SOURCE_NAMES, SOURCE_COLORS
 
 
 # ---------------------------------------------------------------------------
@@ -181,8 +179,8 @@ def health():
     """
     session = Session()
 
-    active_scrapers   = [s.source_name for s in SCRAPERS]
-    disabled_scrapers = [s.source_name for s in DISABLED_SCRAPERS]
+    active_scrapers   = list(SITES.keys())
+    disabled_scrapers = []
 
     # Event counts per source (total and future)
     from sqlalchemy import case
