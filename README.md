@@ -7,7 +7,7 @@ A personal event aggregator for the Phoenix Valley, AZ area. Scrapes events from
 - **Configuration-Driven**: Add new event sources by editing config only - no code changes needed
 - **LLM-Based Extraction**: Uses Groq API to extract events from any website (no brittle CSS selectors)
 - **5 Pagination Types**: Handles any pagination pattern automatically
-- **21+ Event Sources**: Venues, government sites, libraries, museums across Phoenix Valley
+- **23 Event Sources**: Venues, government sites, libraries, museums across Phoenix Valley
 - **Preference Learning**: Learns your interests and ranks events by relevance
 - **Web Interface**: Browse, filter, and manage your event short list
 - **Health Dashboard**: Monitor scraper success rates
@@ -106,6 +106,8 @@ The scraper uses LLM-based extraction to pull events from these sources:
 | Desert Botanical Garden | Garden | `dbg` |
 | OdySea Aquarium | Aquarium | `odysea` |
 | Hale Theatre Arizona | Theatre | `hale_theatre` |
+| Arizona Mushroom Society | Community | `az_mushroom` |
+| Backcountry Hunters & Anglers AZ | Outdoor | `backcountry_hunters` |
 
 ## Preference Learning
 
@@ -284,6 +286,12 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for complete documentation.
 - SQLite doesn't handle concurrent writes well
 - Don't run multiple scrapers simultaneously
 - Don't run the web server and scraper at the same time
+
+**Rate limit errors (429):**
+- Groq free tier has daily token limits (100k tokens/day for llama-3.3-70b-versatile)
+- Check quota: `python check_groq_quota.py`
+- Wait for limits to reset or switch models in `config.py`
+- Use `wait_and_scrape.py` to schedule scraping after rate limit resets
 
 ## License
 
