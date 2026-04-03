@@ -3,13 +3,14 @@
 ## Active Files
 
 **All scraping is done exclusively through:**
-- `llm_scrape_core.py` — fetch + LLM extraction logic, site definitions (`SITES` dict)
+- `sources.py` — SINGLE SOURCE OF TRUTH: site definitions with pagination configs
+- `pagination_engine.py` — configuration-driven pagination handlers
+- `llm_scrape_core.py` — fetch + LLM extraction logic (no site-specific code)
 - `llm_scraper.py` — production entry point (DB persistence, CLI)
 - `score_events.py` — run LLM batch scoring separately after scraping
 - `_test_llm_scrape.py` — test harness for individual sites
-- `sources.py` — display names and colors for sources
 
-All new sources go in `sources.py`'s `SITES` dict.
+**To add a new source:** Add ONE entry to `sources.py` SITES dict. See `HOW_TO_ADD_SCRAPERS.md`.
 
 ---
 
@@ -17,10 +18,13 @@ All new sources go in `sources.py`'s `SITES` dict.
 
 ```
 /
-├── llm_scrape_core.py  # ✅ ACTIVE: fetch + LLM extraction, SITES dict
+├── sources.py          # ✅ ACTIVE: SINGLE SOURCE OF TRUTH - all site configs
+├── pagination_engine.py # ✅ ACTIVE: configuration-driven pagination
+├── llm_scrape_core.py  # ✅ ACTIVE: fetch + LLM extraction (no site-specific code)
 ├── llm_scraper.py      # ✅ ACTIVE: production scraper entry point
 ├── _test_llm_scrape.py # ✅ ACTIVE: test harness (python _test_llm_scrape.py <key>)
-├── sources.py          # ✅ ACTIVE: source display names and colors
+├── score_events.py     # ✅ ACTIVE: LLM batch scoring
+├── HOW_TO_ADD_SCRAPERS.md # ✅ GUIDE: how to add new event sources
 ├── scrapers/           # ❌ DEPRECATED — do not use or modify
 ├── scraper_runner.py   # ❌ DEPRECATED — do not use
 ├── database/           # Database models and configuration
@@ -45,14 +49,21 @@ All new sources go in `sources.py`'s `SITES` dict.
 
 ## Key Architectural Patterns
 
-### Scraper Architecture (LLM-based)
+### Scraper Architecture (Configuration-Driven)
 
-All scraping goes through `llm_scrape_core.py`:
-- `SITES` dict defines all sources: `{key: (name, url, use_selenium, wait, max_pages, note, color)}`
-- `ask_llm()` sends cleaned HTML to Groq and returns structured event JSON
-- `fetch_requests()` / `fetch_selenium()` handle page fetching
-- `llm_scraper.py` handles DB persistence and calls `run_batch_scoring()` after scraping
-- To add a new source: add an entry to `SITES` in `llm_scrape_core.py`
+All scraping uses a configuration-driven pagination engine:
+- `sources.py` contains the `SITES` dict: all site configs with pagination settings
+- `pagination_engine.py` interprets configs and executes appropriate pagination strategy
+- `llm_scrape_core.py` provides fetch/LLM functions (no site-specific code)
+- `llm_scraper.py` handles DB persistence and CLI
+- **To add a new source:** Add ONE entry to `SITES` in `sources.py` (see `HOW_TO_ADD_SCRAPERS.md`)
+
+Supported pagination types:
+1. `llm` - LLM extracts next_page_url (default, works for most sites)
+2. `multi_month` - Generate URLs for N consecutive months
+3. `url_param` - Increment URL parameter (?page=N, pageindex=N, etc.)
+4. `js_button` - Click JavaScript pagination buttons
+5. `calendar_grid` - Month-view calendar with date injection
 
 ### Database Layer
 

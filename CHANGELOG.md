@@ -2,7 +2,52 @@
 
 All notable changes to the Phoenix Events Recommender project are documented in this file.
 
-## [Unreleased] - 2024-01-XX
+## [Unreleased] - 2026-04-02
+
+### Major Refactoring: Configuration-Driven Pagination Engine
+
+**Summary:** Eliminated 260+ lines of duplicated pagination code by implementing a configuration-driven pagination engine. Adding new scrapers now requires only editing `sources.py` - no code changes needed.
+
+**Changes:**
+
+1. **New Files:**
+   - `pagination_engine.py` - Configuration-driven pagination system with 5 handler types
+   - `HOW_TO_ADD_SCRAPERS.md` - Comprehensive guide for adding new event sources
+
+2. **Refactored Files:**
+   - `sources.py` - Now the SINGLE SOURCE OF TRUTH for all scraper configs
+     - Added 8th tuple element: `pagination_config` dict
+     - All 21 sites now have explicit pagination configs
+   - `llm_scraper.py` - Simplified from 400+ lines to ~150 lines
+     - Removed all site-specific pagination code
+     - `scrape_and_save()` now delegates to `pagination_engine.scrape_with_pagination()`
+   - `llm_scrape_core.py` - Removed `SITES` import (now in sources.py)
+
+3. **Pagination Types Implemented:**
+   - `llm` - LLM extracts next_page_url from page content (default, 13 sites)
+   - `multi_month` - Generate month-based URLs (dirtydrummer)
+   - `url_param` - Increment URL parameters (chandler, mesa, chandler_lib)
+   - `js_button` - Click JavaScript buttons (phoenix, azmnh)
+   - `calendar_grid` - Month-view with date injection (tca, gilbert)
+
+4. **Benefits:**
+   - **Maintainability:** No more duplicated pagination code
+   - **Extensibility:** Add new sites by editing config only
+   - **Clarity:** Each pagination pattern has clear documentation
+   - **Future-proof:** Easy to maintain without AI assistance
+
+5. **Migration:**
+   - All 21 existing scrapers migrated to new system
+   - Backward compatible - no database changes
+   - No changes to CLI interface
+
+**Testing:** Ready for testing with existing scrapers.
+
+**Initial Test Results:** Fibber scraper tested successfully - found 25 events, added 7 new ones in 47s using new pagination engine.
+
+---
+
+## [2024-01-XX] - Code Quality Improvements
 
 ### Major Code Quality Improvements
 

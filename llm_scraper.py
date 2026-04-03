@@ -4,6 +4,8 @@ llm_scraper.py -- Production LLM-based event scraper
 Imports all fetch/LLM/site logic from llm_scrape_core. This file only
 contains DB persistence, date parsing, and the CLI entry point.
 
+Uses pagination_engine for all scraping - no site-specific code here.
+
 Usage:
     python llm_scraper.py              # scrape all sites
     python llm_scraper.py --no-purge   # append to existing events
@@ -17,10 +19,9 @@ Run scoring separately after scraping:
 import sys, time, re
 from datetime import datetime, timedelta, date as date_type
 from database.models import Session, Event, ScraperRun
-from llm_scrape_core import (
-    fetch_requests, fetch_selenium, close_driver,
-    clean_html, ask_llm, SITES,
-)
+from llm_scrape_core import close_driver
+from pagination_engine import scrape_with_pagination
+from sources import SITES
 
 
 # ---------------------------------------------------------------------------
@@ -96,10 +97,14 @@ def scrape_and_save(
     use_selenium: bool,
     wait: int,
     max_pages: int,
+    pagination_config: dict | None,
     session
 ) -> tuple[int, int, bool, str | None]:
     """
-    Scrape one site via LLM extraction and save new events to the database.
+    Scrape one site via pagination engine and save new events to the database.
+    
+    This function is now a thin wrapper around pagination_engine.scrape_with_pagination().
+    All pagination logic has been moved to the engine - this just handles DB persistence.
 
     Args:
         key: Site key from SITES dict (e.g., 'fibber', 'mesa')
@@ -108,306 +113,33 @@ def scrape_and_save(
         use_selenium: Whether to use Selenium (True) or requests (False)
         wait: Seconds to wait after page load
         max_pages: Maximum number of pages to scrape
+        pagination_config: Pagination configuration dict (or None for default)
         session: SQLAlchemy session for database operations
 
     Returns:
         Tuple of (events_found, events_added, success, error_message)
     """
-    all_events    = []
     error_message = None
-    success       = True
+    success = True
     
-    # Special handling for calendar-based sites that need multiple months
-    if key == 'dirtydrummer':
-        urls_to_scrape = []
-        
-        # Current month and next 2 months
-        base_date = datetime.now()
-        for i in range(3):
-            month_date = base_date + timedelta(days=30*i)
-            month_str = month_date.strftime('%m-%Y')
-            url = f"https://www.thedirtydrummer.com/events?view=calendar&month={month_str}"
-            urls_to_scrape.append(url)
-        
-        print(f"  Multi-month scraping: {len(urls_to_scrape)} months")
-        
-        for month_num, url in enumerate(urls_to_scrape, 1):
-            print(f"  Month {month_num}: {url}")
-            try:
-                html = fetch_selenium(url, wait) if use_selenium else fetch_requests(url)
-                text = clean_html(html)
-                print(f"    text={len(text)} chars", end='  ')
-                
-                result = ask_llm(text, current_url=url, site_hint=name)
-                page_events = result.get('events', [])
-                all_events.extend(page_events)
-                print(f"events={len(page_events)}")
-                
-                if month_num < len(urls_to_scrape):
-                    time.sleep(2)
-                    
-            except Exception as e:
-                print(f"\n    ERROR on month {month_num}: {e}")
-                if month_num == 1:  # If first month fails, mark as failure
-                    success = False
-                    error_message = str(e)
-
-    elif key == 'chandler_lib':
-        # BiblioCommons date-range URL with &page=N pagination
-        print(f"  Explicit pagination: {max_pages} pages")
-        for page_num in range(1, max_pages + 1):
-            url = f"{start_url}&page={page_num}" if page_num > 1 else start_url
-            print(f"  Page {page_num}: {url[:80]}")
-            try:
-                html = fetch_selenium(url, wait) if use_selenium else fetch_requests(url)
-                text = clean_html(html)
-                print(f"    text={len(text)} chars", end='  ')
-                result = ask_llm(text, current_url=url, site_hint=name)
-                page_events = result.get('events', [])
-                all_events.extend(page_events)
-                print(f"events={len(page_events)}")
-                if not page_events:
-                    print(f"    No events, stopping")
-                    break
-                if page_num < max_pages:
-                    time.sleep(2)
-            except Exception as e:
-                print(f"\n    ERROR on page {page_num}: {e}")
-                if page_num == 1:
-                    success = False
-                    error_message = str(e)
-                break
-
-    elif key == 'mesa':
-        # pageindex=N pagination (1-indexed), filters baked into URL
-        print(f"  Explicit pagination: {max_pages} pages")
-        for page_num in range(1, max_pages + 1):
-            url = re.sub(r'pageindex=\d+', f'pageindex={page_num}', start_url)
-            print(f"  Page {page_num}: {url[:80]}")
-            try:
-                html = fetch_selenium(url, wait) if use_selenium else fetch_requests(url)
-                text = clean_html(html)
-                print(f"    text={len(text)} chars", end='  ')
-                result = ask_llm(text, current_url=url, site_hint=name)
-                page_events = result.get('events', [])
-                all_events.extend(page_events)
-                print(f"events={len(page_events)}")
-                if not page_events:
-                    print(f"    No events, stopping")
-                    break
-                if page_num < max_pages:
-                    time.sleep(2)
-            except Exception as e:
-                print(f"\n    ERROR on page {page_num}: {e}")
-                if page_num == 1:
-                    success = False
-                    error_message = str(e)
-                break
-
-    elif key == 'azmnh':
-        # JS pagination via nextPage() onclick - no URL change
-        from selenium.webdriver.common.by import By
-        from llm_scrape_core import get_driver, close_driver
-
-        close_driver()
-        driver = get_driver()
-        driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-            'userAgent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'acceptLanguage': 'en-US,en;q=0.9', 'platform': 'Win32',
-        })
-        try:
-            driver.get(start_url)
-        except Exception:
-            pass
-        time.sleep(wait)
-
-        for page_num in range(1, max_pages + 1):
-            text = clean_html(driver.page_source)
-            print(f"  page {page_num}: text={len(text)} chars", end='  ')
-            result = ask_llm(text, current_url=start_url, site_hint=name)
-            page_events = result.get('events', [])
-            all_events.extend(page_events)
-            print(f"events={len(page_events)}")
-
-            # Try to click the next page button
-            try:
-                next_btn = driver.find_element(By.CSS_SELECTOR, "li.nextLink a.page-link")
-                parent = driver.find_element(By.CSS_SELECTOR, "li.nextLink")
-                style = parent.get_attribute('style') or ''
-                if 'display: none' in style or 'display:none' in style:
-                    print(f"    Last page reached")
-                    break
-                driver.execute_script("arguments[0].click();", next_btn)
-                time.sleep(3)
-            except Exception as e:
-                print(f"    No next button, stopping")
-                break
-
-        close_driver()
-
-    elif key == 'phoenix':
-        # JS pagination - click Next button (no URL change)
-        # Button selector: a.cmp-searchCustom__pagination-btn (second = Next)
-        from selenium.webdriver.common.by import By
-        from llm_scrape_core import get_driver, close_driver
-
-        close_driver()
-        driver = get_driver()
-        driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-            'userAgent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
-            'acceptLanguage': 'en-US,en;q=0.9', 'platform': 'Win32',
-        })
-        try:
-            driver.get(start_url)
-        except Exception:
-            pass
-        time.sleep(wait)
-
-        for page_num in range(1, max_pages + 1):
-            driver.execute_script("window.scrollTo(0, document.body.scrollHeight);")
-            time.sleep(2)
-            text = clean_html(driver.page_source)
-            print(f"  page {page_num}: text={len(text)} chars", end='  ')
-            result = ask_llm(text, current_url=start_url, site_hint=name)
-            page_events = result.get('events', [])
-            all_events.extend(page_events)
-            print(f"events={len(page_events)}")
-
-            # Try to click Next
-            try:
-                btns = driver.find_elements(By.CSS_SELECTOR, "a.cmp-searchCustom__pagination-btn")
-                if len(btns) < 2 or btns[1].get_attribute('disabled'):
-                    print(f"    Last page reached")
-                    break
-                driver.execute_script("arguments[0].click();", btns[1])
-                time.sleep(3)
-            except Exception as e:
-                print(f"    Pagination error: {e}")
-                break
-
-        close_driver()
-
-    elif key in ('tca', 'gilbert'):
-        # Month-view calendar with /-curm-M/-cury-YYYY/ URL pattern
-        # Day numbers are bare in the grid - inject full dates so LLM doesn't get confused
-        import calendar as cal_mod
-        base_urls = {
-            'tca':     'https://www.tempecenterforthearts.com/events/tca-advanced-components/events-calendar',
-            'gilbert': 'https://www.gilbertaz.gov/residents/calendar-month-view',
-        }
-        print(f"  Multi-month scraping: 3 months")
-        base_date = datetime.now()
-        for i in range(3):
-            month_date = base_date + timedelta(days=30*i)
-            url = f"{base_urls[key]}/-curm-{month_date.month}/-cury-{month_date.year}"
-            month_hint = f"{name} - {month_date.strftime('%B %Y')}"
-            print(f"  Month {i+1}: {url}")
-            try:
-                html = fetch_selenium(url, wait)
-                text = clean_html(html)
-                # Replace bare day numbers with full dates so LLM assigns correct month
-                month_name = month_date.strftime('%B')
-                days_in_month = cal_mod.monthrange(month_date.year, month_date.month)[1]
-                for day in range(1, days_in_month + 1):
-                    text = re.sub(rf'(?m)^{day}$', f'{month_name} {day}, {month_date.year}:', text)
-                print(f"    text={len(text)} chars", end='  ')
-                result = ask_llm(text, current_url=url, site_hint=month_hint)
-                page_events = result.get('events', [])
-                all_events.extend(page_events)
-                print(f"events={len(page_events)}")
-                if i < 2:
-                    time.sleep(2)
-            except Exception as e:
-                print(f"\n    ERROR on month {i+1}: {e}")
-                if i == 0:
-                    success = False
-                    error_message = str(e)
-                break
-
-    elif key == 'chandler':        # Zero-indexed ?page=N pagination, buttons not visible to LLM
-        print(f"  Explicit pagination: {max_pages} pages")
-        for page_num in range(max_pages):
-            url = f"{start_url}?page={page_num}"
-            print(f"  Page {page_num}: {url}")
-            try:
-                html = fetch_selenium(url, wait) if use_selenium else fetch_requests(url)
-                text = clean_html(html)
-                print(f"    text={len(text)} chars", end='  ')
-
-                result = ask_llm(text, current_url=url, site_hint=name)
-                page_events = result.get('events', [])
-                all_events.extend(page_events)
-                print(f"events={len(page_events)}")
-
-                # Stop early if page returned no events (past end of results)
-                if not page_events:
-                    print(f"    No events on page {page_num}, stopping")
-                    break
-
-                if page_num < max_pages - 1:
-                    time.sleep(2)
-
-            except Exception as e:
-                print(f"\n    ERROR on page {page_num}: {e}")
-                if page_num == 0:
-                    success = False
-                    error_message = str(e)
-                break
-    else:
-        # Standard pagination-based scraping for other sites
-        current_url   = start_url
-        visited       = set()
-        page_num      = 0
-
-        # Sites that need multiple scroll passes to load all content
-        scroll_passes = 10
-
-        try:
-            while current_url and page_num < max_pages:
-                page_num += 1
-                if current_url in visited:
-                    print(f"    loop detected, stopping")
-                    break
-                visited.add(current_url)
-
-                print(f"  page {page_num}: {current_url[:80]}")
-                try:
-                    html = fetch_selenium(current_url, wait, scroll_passes=scroll_passes) if use_selenium else fetch_requests(current_url)
-                except Exception as e:
-                    print(f"    FETCH ERROR: {e}")
-                    break
-
-                text = clean_html(html)
-                print(f"    text={len(text)} chars", end='  ')
-
-                try:
-                    result = ask_llm(text, current_url=current_url, site_hint=name)
-                except Exception as e:
-                    print(f"\n    LLM ERROR: {e}")
-                    break
-
-                page_events = result.get('events', [])
-                next_url    = result.get('next_page_url')
-                all_events.extend(page_events)
-                print(f"events={len(page_events)}  next={next_url or 'null'}")
-
-                if next_url and not next_url.startswith('http'):
-                    break
-                current_url = next_url
-                if current_url:
-                    time.sleep(2)
-
-        except Exception as e:
-            success       = False
-            error_message = str(e)
-            print(f"  ERROR: {e}")
+    try:
+        # Delegate all scraping to the pagination engine
+        all_events = scrape_with_pagination(
+            key, name, start_url, use_selenium, wait, max_pages, pagination_config
+        )
+    except Exception as e:
+        success = False
+        error_message = str(e)
+        print(f"  ERROR: {e}")
+        all_events = []
 
     # Save to database
     events_added = 0
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+    
     for ev in all_events:
         event_dt = parse_date(ev.get('date'), ev.get('time'))
-        title    = (ev.get('title') or '').strip()
+        title = (ev.get('title') or '').strip()
         if not title:
             continue
 
@@ -456,7 +188,7 @@ def main():
     if target == 'list':
         print(f"{'KEY':<18} {'FETCH':<10} {'PAGES':<7} URL")
         print('-' * 80)
-        for k, (name, url, use_sel, wait, max_pages, note, _color) in SITES.items():
+        for k, (name, url, use_sel, wait, max_pages, note, _color, _pagination) in SITES.items():
             sel  = 'selenium' if use_sel else 'requests'
             flag = f'  [{note}]' if note else ''
             print(f"  {k:<16} {sel:<10} max={max_pages}  {url[:55]}{flag}")
@@ -489,7 +221,7 @@ def main():
         total_added = 0
 
         for key in keys:
-            name, url, use_sel, wait, max_pages, note, _color = SITES[key]
+            name, url, use_sel, wait, max_pages, note, _color, pagination_config = SITES[key]
             print(f"\n{'='*60}")
             print(f"SCRAPING: {name}")
             if note:
@@ -498,7 +230,7 @@ def main():
 
             start_time = time.time()
             found, added, success, error = scrape_and_save(
-                key, name, url, use_sel, wait, max_pages, session
+                key, name, url, use_sel, wait, max_pages, pagination_config, session
             )
             duration     = time.time() - start_time
             total_found += found

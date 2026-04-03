@@ -32,7 +32,6 @@ import re, json, time, httpx, os, requests, urllib3, logging, threading
 from bs4 import BeautifulSoup
 from groq import Groq
 import config
-from sources import SITES
 
 # Configure logging
 log = logging.getLogger(__name__)
@@ -404,5 +403,3 @@ def fetch_selenium(url: str, wait: int = 6, scroll_passes: int = 10) -> str:
         last_height = new_height
 
     return driver.page_source
-
-# SITES is defined in sources.py -- import at top of file.
