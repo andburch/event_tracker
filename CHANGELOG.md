@@ -4,6 +4,28 @@ All notable changes to the Phoenix Events Recommender project are documented in 
 
 ## [Unreleased] - 2026-04-02
 
+### Configuration Improvements
+
+**Summary:** Centralized LLM model configuration to make it easier to switch models without code changes.
+
+**Changes:**
+
+1. **Model Configuration:**
+   - Added `LLM_SCRAPING_MODEL` and `LLM_SCORING_MODEL` to `config.py`
+   - All model names now read from config instead of hardcoded strings
+   - Makes it easy to switch to self-hosted LLMs in the future
+
+2. **Quota Check Improvements:**
+   - `check_groq_quota.py` now checks the actual models used by the application
+   - Supports `--model <name>` flag to check specific models
+   - Shows quota for both scraping and scoring models (if different)
+
+**Files Modified:**
+- `config.py` - Added LLM model configuration constants
+- `llm_scrape_core.py` - Reads model from config
+- `recommender/llm_filter.py` - Reads model from config
+- `check_groq_quota.py` - Enhanced to check multiple models
+
 ### Major Refactoring: Configuration-Driven Pagination Engine
 
 **Summary:** Eliminated 260+ lines of duplicated pagination code by implementing a configuration-driven pagination engine. Adding new scrapers now requires only editing `sources.py` - no code changes needed.

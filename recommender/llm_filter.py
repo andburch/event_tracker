@@ -38,9 +38,9 @@ log = logging.getLogger(__name__)
 # ---------------------------------------------------------------------------
 # Model selection
 # ---------------------------------------------------------------------------
-
-SCORE_MODEL       = 'llama-3.1-8b-instant'     # Fast model for batch scoring
-SUMMARY_MODEL     = 'llama-3.3-70b-versatile'  # Smarter model for preference summarization
+# Models are configured in config.py and can be changed without code modifications
+SCORE_MODEL       = config.LLM_SCORING_MODEL      # Model for batch scoring
+SUMMARY_MODEL     = config.LLM_SCORING_MODEL      # Model for preference summarization
 
 # ---------------------------------------------------------------------------
 # Groq client (lazy singleton)

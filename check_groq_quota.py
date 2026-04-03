@@ -12,36 +12,21 @@ returns on every response:
   x-ratelimit-reset-tokens        — Time until per-minute token limit resets
 
 Usage:
-    python check_groq_quota.py
-    python check_groq_quota.py --model llama-3.3-70b-versatile
+    python check_groq_quota.py                    # Check both scraping and scoring models
+    python check_groq_quota.py --model <name>     # Check specific model
 """
 
 import sys
 import httpx
 import config
 
-MODEL   = 'llama-3.1-8b-instant'   # Cheapest/fastest model for the probe call
-HEADERS = [
-    'x-ratelimit-limit-requests',
-    'x-ratelimit-remaining-requests',
-    'x-ratelimit-reset-requests',
-    'x-ratelimit-limit-tokens',
-    'x-ratelimit-remaining-tokens',
-    'x-ratelimit-reset-tokens',
-]
-
-def check_quota(model: str = MODEL):
+def check_quota(model: str):
+    """Check quota for a specific model."""
     if not config.GROQ_API_KEY:
         print("ERROR: GROQ_API_KEY not set in .env")
         sys.exit(1)
 
-    # Parse optional --model flag
-    if '--model' in sys.argv:
-        idx = sys.argv.index('--model')
-        if idx + 1 < len(sys.argv):
-            model = sys.argv[idx + 1]
-
-    print(f"Probing Groq quota using model: {model}\n")
+    print(f"Checking quota for: {model}")
 
     # Use a raw httpx call so we can inspect response headers directly.
     # The Groq SDK wraps the response and doesn't expose headers easily.
@@ -62,13 +47,13 @@ def check_quota(model: str = MODEL):
         )
 
     if resp.status_code == 429:
-        print("STATUS: Rate limited (429) — you've hit a cap.\n")
+        print("  STATUS: Rate limited (429) — you've hit a cap.\n")
     elif resp.status_code != 200:
-        print(f"STATUS: HTTP {resp.status_code}")
-        print(resp.text[:300])
-        sys.exit(1)
+        print(f"  STATUS: HTTP {resp.status_code}")
+        print(f"  {resp.text[:300]}\n")
+        return
     else:
-        print("STATUS: OK\n")
+        print("  STATUS: OK")
 
     # Print rate limit headers in a readable table
     h = resp.headers
@@ -84,10 +69,30 @@ def check_quota(model: str = MODEL):
     col_w = 30
     for label, value, limit in rows:
         suffix = f"  (limit: {limit})" if limit else ''
-        print(f"  {label:<{col_w}} {value}{suffix}")
+        print(f"    {label:<{col_w}} {value}{suffix}")
 
     print()
 
 
 if __name__ == '__main__':
-    check_quota()
+    # Parse optional --model flag
+    if '--model' in sys.argv:
+        idx = sys.argv.index('--model')
+        if idx + 1 < len(sys.argv):
+            model = sys.argv[idx + 1]
+            check_quota(model)
+        else:
+            print("ERROR: --model requires a model name")
+            sys.exit(1)
+    else:
+        # Check both models used by the application
+        print("="*70)
+        print("GROQ API QUOTA CHECK")
+        print("="*70)
+        print()
+        
+        check_quota(config.LLM_SCRAPING_MODEL)
+        
+        # Only check scoring model if it's different
+        if config.LLM_SCORING_MODEL != config.LLM_SCRAPING_MODEL:
+            check_quota(config.LLM_SCORING_MODEL)

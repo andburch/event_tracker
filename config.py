@@ -48,6 +48,20 @@ PHOENIX_LON = -112.0740
 SEARCH_RADIUS_MILES = 30  # Maximum distance from center to consider "local"
 
 # ---------------------------------------------------------------------------
+# LLM Model Configuration
+# ---------------------------------------------------------------------------
+
+# Model used for event extraction during scraping
+# llama-3.3-70b-versatile: Better output quality, higher TPM (12k vs 6k),
+#   but lower RPD (1k vs 14.4k). Used for all scraping.
+# llama-3.1-8b-instant: Faster, higher daily limit (14.4k RPD), lower quality
+LLM_SCRAPING_MODEL = 'llama-3.3-70b-versatile'  # Back to better model
+
+# Model used for event scoring/recommendation
+# Can be the same or different from scraping model
+LLM_SCORING_MODEL = 'llama-3.3-70b-versatile'
+
+# ---------------------------------------------------------------------------
 # LLM Scraping Configuration
 # ---------------------------------------------------------------------------
 

@@ -59,9 +59,11 @@ def _get_client() -> Groq:
 # ---------------------------------------------------------------------------
 # Model + schema
 # ---------------------------------------------------------------------------
-# llama-3.3-70b-versatile: Better output quality, higher TPM (12k vs 6k),
-#   but lower RPD (1k vs 14.4k). Used for all scraping.
-_MODEL = 'llama-3.3-70b-versatile'
+# Model is configured in config.py and read dynamically (not cached at import)
+
+def _get_model():
+    """Return the current scraping model from config (allows runtime changes)."""
+    return config.LLM_SCRAPING_MODEL
 
 EVENT_SCHEMA = {'type': 'json_object'}
 
@@ -195,9 +197,8 @@ def _ask_llm_single(
     prompt = (
         f"The following is text scraped from an events page"
         f"{' (' + site_hint + ')' if site_hint else ''}.\n"
-        f"Current page URL: {current_url}\n"
-        f"TODAY'S DATE: {datetime.now().strftime('%Y-%m-%d')} (use this to infer correct year for events)\n\n"
-        "1. Extract ALL upcoming events into the 'events' array.\n"
+        f"Current page URL: {current_url}\n\n"
+        "1. Extract all events into the 'events' array.\n"
         "   Each event must have these exact keys:\n"
         "     title       (string)\n"
         "     date        (string, MUST be in YYYY-MM-DD format, e.g. '2026-03-22'. If a date range like 'Oct 17, 2025 - Apr 25, 2026', use the START date)\n"
@@ -210,9 +211,7 @@ def _ask_llm_single(
         "   'Mar 20 @ 9:00 am - 5:00 pm' or '9:00 am - 4:00 pm' on the next line after the date.\n"
         "   Always capture the start time if present. Use 12-hour format e.g. '9:00 AM'.\n"
         "   CRITICAL: Date MUST be in YYYY-MM-DD format (e.g. '2026-03-22'), not text format. For date ranges, use the start date.\n"
-        "   CRITICAL: When inferring the year, use TODAY'S DATE as context. If a month has already passed this year, the event is likely NEXT year.\n"
-        "   CRITICAL: For calendar grid layouts, the month is shown at the top of the page. Day numbers in the grid belong to THAT month unless clearly labeled otherwise.\n"
-        "   CRITICAL: Only include FUTURE events (events on or after today's date). Skip past events.\n\n"
+        "   CRITICAL: For calendar grid layouts, the month is shown at the top of the page. Day numbers in the grid belong to THAT month unless clearly labeled otherwise.\n\n"
         + pagination_instruction
         + "Respond with ONLY valid JSON in this exact format, no markdown, no explanation:\n"
         '{"events": [...], "next_page_url": "..." or null}\n'
@@ -223,7 +222,7 @@ def _ask_llm_single(
     for attempt in range(retries):
         try:
             response = _get_client().chat.completions.create(
-                model=_MODEL,
+                model=_get_model(),
                 messages=[{'role': 'user', 'content': prompt}],
                 temperature=0.1,
                 response_format=EVENT_SCHEMA,

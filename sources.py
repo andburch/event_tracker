@@ -239,6 +239,13 @@ SITES = {
         ('#f0fdf4', '#16a34a', '#14532d'),
         None,  # Default LLM pagination
     ),
+    'backcountry_hunters': (
+        'Backcountry Hunters & Anglers - Arizona',
+        'https://www.backcountryhunters.org//events/pageid/eventlistview/categoryid/17',
+        True, 5, 3, 'Arizona chapter events',
+        ('#fef3c7', '#ca8a04', '#713f12'),
+        None,  # Default LLM pagination
+    ),
 }
 
 # ---------------------------------------------------------------------------
