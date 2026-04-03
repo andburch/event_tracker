@@ -29,6 +29,7 @@ KNOWN LIMITATIONS
 """
 
 import re, json, time, httpx, os, requests, urllib3, logging, threading
+from datetime import datetime
 from bs4 import BeautifulSoup
 from groq import Groq
 import config
@@ -194,7 +195,8 @@ def _ask_llm_single(
     prompt = (
         f"The following is text scraped from an events page"
         f"{' (' + site_hint + ')' if site_hint else ''}.\n"
-        f"Current page URL: {current_url}\n\n"
+        f"Current page URL: {current_url}\n"
+        f"TODAY'S DATE: {datetime.now().strftime('%Y-%m-%d')} (use this to infer correct year for events)\n\n"
         "1. Extract ALL upcoming events into the 'events' array.\n"
         "   Each event must have these exact keys:\n"
         "     title       (string)\n"
@@ -208,7 +210,9 @@ def _ask_llm_single(
         "   'Mar 20 @ 9:00 am - 5:00 pm' or '9:00 am - 4:00 pm' on the next line after the date.\n"
         "   Always capture the start time if present. Use 12-hour format e.g. '9:00 AM'.\n"
         "   CRITICAL: Date MUST be in YYYY-MM-DD format (e.g. '2026-03-22'), not text format. For date ranges, use the start date.\n"
-        "   CRITICAL: For calendar grid layouts, the month is shown at the top of the page. Day numbers in the grid belong to THAT month unless clearly labeled otherwise.\n\n"
+        "   CRITICAL: When inferring the year, use TODAY'S DATE as context. If a month has already passed this year, the event is likely NEXT year.\n"
+        "   CRITICAL: For calendar grid layouts, the month is shown at the top of the page. Day numbers in the grid belong to THAT month unless clearly labeled otherwise.\n"
+        "   CRITICAL: Only include FUTURE events (events on or after today's date). Skip past events.\n\n"
         + pagination_instruction
         + "Respond with ONLY valid JSON in this exact format, no markdown, no explanation:\n"
         '{"events": [...], "next_page_url": "..." or null}\n'

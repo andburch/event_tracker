@@ -145,13 +145,19 @@ def scrape_and_save(
 
         # Handle date range events: if start is past but end is future, use today
         end_date_str = ev.get('end_date')
+        is_ongoing = False
         if end_date_str:
             try:
                 end_dt = datetime.strptime(end_date_str.strip(), '%Y-%m-%d')
                 if event_dt < today and end_dt >= today:
                     event_dt = today  # Currently running - use today
+                    is_ongoing = True
             except ValueError:
                 pass
+
+        # Skip past events (before today), unless it's an ongoing event
+        if event_dt < today and not is_ongoing:
+            continue
 
         existing = session.query(Event).filter_by(title=title, date=event_dt).first()
         if not existing:
