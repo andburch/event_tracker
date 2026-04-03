@@ -128,7 +128,7 @@ User runs: python llm_scraper.py fibber
 - JavaScript sites: ~8-15 seconds per page
 - LLM extraction: ~5-10 seconds per page
 - Single site: 30-60 seconds
-- All 21 sites: 15-30 minutes
+- All 23 sites: 15-30 minutes
 
 ## Getting Help
 
