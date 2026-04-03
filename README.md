@@ -2,6 +2,25 @@
 
 A personal event aggregator for the Phoenix Valley, AZ area. Scrapes events from city government sites, local venues, and arts centers using LLM-based extraction, then uses AI to rank them by your personal preferences.
 
+## Key Features
+
+- **Configuration-Driven**: Add new event sources by editing config only - no code changes needed
+- **LLM-Based Extraction**: Uses Groq API to extract events from any website (no brittle CSS selectors)
+- **5 Pagination Types**: Handles any pagination pattern automatically
+- **21+ Event Sources**: Venues, government sites, libraries, museums across Phoenix Valley
+- **Preference Learning**: Learns your interests and ranks events by relevance
+- **Web Interface**: Browse, filter, and manage your event short list
+- **Health Dashboard**: Monitor scraper success rates
+
+## Architecture
+
+```
+sources.py → pagination_engine.py → llm_scrape_core.py → Groq API
+(config)     (5 handlers)           (fetch/clean/ask)     (LLM)
+```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation and flow charts.
+
 ## Requirements
 
 - Python 3.10+
@@ -189,7 +208,41 @@ Because the LLM reads plain text rather than HTML structure, it works on virtual
 
 That's it! No custom parsing code needed.
 
+## Adding a New Event Source
+
+Adding a new scraper takes 5-10 minutes and requires editing only ONE file:
+
+1. Open `sources.py`
+2. Add entry to `SITES` dict:
+   ```python
+   'mysite': (
+       'My Site Name',
+       'https://mysite.com/events',
+       True,  # Use Selenium?
+       5,     # Wait seconds
+       5,     # Max pages
+       '',    # Notes
+       ('#fff', '#000', '#333'),  # Colors
+       None,  # Pagination config (or dict)
+   ),
+   ```
+3. Test: `python llm_scraper.py mysite`
+
+See [HOW_TO_ADD_SCRAPERS.md](HOW_TO_ADD_SCRAPERS.md) for detailed guide with examples.
+
 ## Project Structure
+
+```
+sources.py              # SINGLE SOURCE OF TRUTH - all site configs
+pagination_engine.py    # Configuration-driven pagination (5 types)
+llm_scrape_core.py      # Low-level scraping utilities
+llm_scraper.py          # Production entry point + DB persistence
+score_events.py         # Batch event scoring
+server/app.py           # Flask web interface
+database/models.py      # SQLAlchemy ORM models
+```
+
+See [ARCHITECTURE.md](ARCHITECTURE.md) for complete documentation.
 
 ```
 /
