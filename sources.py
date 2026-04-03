@@ -232,6 +232,13 @@ SITES = {
         ('#fef9c3', '#ca8a04', '#713f12'),
         None,  # Default LLM pagination
     ),
+    'az_mushroom': (
+        'Arizona Mushroom Society',
+        'https://www.arizonamushroomsociety.org/coming-events',
+        True, 5, 3, 'Community events',
+        ('#f0fdf4', '#16a34a', '#14532d'),
+        None,  # Default LLM pagination
+    ),
 }
 
 # ---------------------------------------------------------------------------
