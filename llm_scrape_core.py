@@ -28,7 +28,7 @@ KNOWN LIMITATIONS
   - Pages requiring login or special cookies are not supported.
 """
 
-import re, json, time, httpx, os, requests, urllib3, logging, threading
+import re, json, time, httpx, os, shutil, requests, urllib3, logging, threading
 from datetime import datetime
 from bs4 import BeautifulSoup
 from groq import Groq
@@ -340,7 +340,7 @@ def get_driver():
             options.add_argument('--disable-gpu')
             options.add_argument('--window-size=1920,1080')
             options.add_experimental_option('excludeSwitches', ['enable-logging'])
-            service = Service(os.path.join(os.getcwd(), 'chromedriver.exe'))
+            service = Service(shutil.which('chromedriver') or '/usr/bin/chromedriver')
             _selenium_driver = webdriver.Chrome(service=service, options=options)
             _selenium_driver.set_page_load_timeout(30)
             log.info("Created new Selenium WebDriver instance")

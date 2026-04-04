@@ -34,7 +34,7 @@ HTTPS_PROXY = os.getenv('HTTPS_PROXY')
 
 # SQLite file stored in the project root. Path is relative to wherever the
 # process is launched from (typically the repo root).
-DATABASE_URL = 'sqlite:///events.db'
+DATABASE_URL = os.environ.get('DATABASE_URL', 'sqlite:///events.db')
 
 # ---------------------------------------------------------------------------
 # Phoenix Valley geographic bounds

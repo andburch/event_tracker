@@ -1,0 +1,12 @@
+chromedriver.exe
+chromedriver-win64/
+__pycache__/
+*.pyc
+*.pyo
+.env
+*.db
+*.db-shm
+*.db-wal
+.git/
+venv/
+.venv/
