@@ -59,7 +59,7 @@ def _get_client() -> Groq:
     global _client
     if _client is None:
         transport   = httpx.HTTPTransport(verify=False)  # Corporate firewall SSL bypass
-        http_client = httpx.Client(transport=transport)
+        http_client = httpx.Client(transport=transport, timeout=60)
         _client     = Groq(api_key=config.GROQ_API_KEY, http_client=http_client)
     return _client
 

@@ -79,7 +79,6 @@ SITES = {
             'type': 'url_param',
             'param_name': 'page',
             'start_index': 0,  # Zero-indexed
-            'stop_on_empty': True
         },
     ),
     'scottsdale': (
@@ -123,7 +122,6 @@ SITES = {
             'type': 'url_param',
             'param_name': 'pageindex',
             'start_index': 1,
-            'stop_on_empty': True
         },
     ),
 
@@ -137,7 +135,6 @@ SITES = {
             'type': 'url_param',
             'param_name': 'page',
             'start_index': 1,
-            'stop_on_empty': True
         },
     ),
     'tempe_lib': (

@@ -34,7 +34,7 @@ from typing import Callable
 from selenium.webdriver.common.by import By
 from llm_scrape_core import (
     fetch_requests, fetch_selenium, close_driver, get_driver,
-    clean_html, ask_llm
+    clean_html, ask_llm, _SPOOF_UA
 )
 import logging
 
@@ -99,8 +99,7 @@ def _paginate_url_param(
     param_name = config.get('param_name', 'page')
     start_index = config.get('start_index', 1)
     param_pattern = config.get('param_pattern')
-    stop_on_empty = config.get('stop_on_empty', True)
-    
+
     if not param_pattern:
         param_pattern = rf'{param_name}=\d+'
     
@@ -164,7 +163,7 @@ def _paginate_js_button(
     
     # CDP user-agent spoofing
     driver.execute_cdp_cmd('Network.setUserAgentOverride', {
-        'userAgent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/122.0.0.0 Safari/537.36',
+        'userAgent': _SPOOF_UA,
         'acceptLanguage': 'en-US,en;q=0.9',
         'platform': 'Win32',
     })
