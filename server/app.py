@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.models import (
     Session, Event, FeedbackHistory, UserProfile,
-    PreferenceProfileHistory, ScraperRun, LLMCall,
+    PreferenceProfileHistory, ScraperRun, LLMCall, GroqModelLimit,
 )
 from recommender.llm_filter import score_events, get_profile, maybe_update_preference_summary
 from datetime import datetime, timedelta, date
@@ -253,18 +253,6 @@ def health():
         successful_runs     = len([r for r in recent_runs if r.success])
         overall_success_rate = (successful_runs / total_runs * 100) if total_runs > 0 else 0
 
-        # LLM call timing stats (last 7 days), grouped by provider + call_type
-        llm_rows = session.query(
-            LLMCall.provider,
-            LLMCall.call_type,
-            func.count(LLMCall.id).label('calls'),
-            func.avg(LLMCall.duration_seconds).label('avg_duration'),
-            func.avg(LLMCall.prompt_tokens).label('avg_prompt_tokens'),
-            func.avg(LLMCall.completion_tokens).label('avg_completion_tokens'),
-        ).filter(LLMCall.timestamp >= week_ago).group_by(
-            LLMCall.provider, LLMCall.call_type
-        ).order_by(LLMCall.provider, LLMCall.call_type).all()
-
         return render_template(
             'health.html',
             active_scrapers=active_scrapers,
@@ -277,7 +265,6 @@ def health():
             total_runs=total_runs,
             overall_success_rate=overall_success_rate,
             current_time=datetime.now(),
-            llm_stats=llm_rows,
         )
     finally:
         session.close()
@@ -454,6 +441,207 @@ def profile_summary():
         profile_row.preference_summary = summary
         session.commit()
         return redirect('/profile')
+    finally:
+        session.close()
+
+
+@app.route('/llm-usage')
+def llm_usage():
+    """
+    LLM token usage dashboard.
+
+    Renders four sections (template: llm_usage.html):
+      1. Today's budget     — Per (key, model) rolling 24h token usage vs TPD,
+                              plus "next tick" (when the oldest in-window call
+                              rolls off) and "free at" (if currently over limit).
+      2. Usage chart        — Stacked line chart of rolling 24h % of TPD over
+                              the last 7 days, per model. Non-stacked because
+                              percentages of different TPDs can't be summed.
+      3. Daily table        — Token usage by day × (key, model) over last 7 days.
+      4. All-time totals    — Per model: total calls, tokens, avg tokens/call.
+      5. Recent calls log   — Last 100 Groq calls with full details.
+
+    All data is queried fresh from the llm_calls table; rate limits are
+    cross-referenced against groq_model_limits.
+    """
+    session = Session()
+    try:
+        now      = datetime.utcnow()
+        day_ago  = now - timedelta(hours=24)
+        week_ago = now - timedelta(days=7)
+
+        # All model limits from DB
+        limits = {r.model: r for r in session.query(GroqModelLimit).all()}
+
+        # --- Today's budget usage per (key, model) ---
+        budget_rows = session.query(
+            LLMCall.api_key_label,
+            LLMCall.model,
+            func.count(LLMCall.id).label('calls'),
+            func.sum(LLMCall.prompt_tokens + LLMCall.completion_tokens).label('tokens'),
+            func.avg(LLMCall.duration_seconds).label('avg_dur'),
+        ).filter(
+            LLMCall.timestamp >= day_ago,
+            LLMCall.provider == 'groq',
+        ).group_by(LLMCall.api_key_label, LLMCall.model).all()
+
+        # For reset-time calculations, fetch the actual calls in the 24h window
+        # ordered by timestamp. We use these to compute when the oldest call
+        # rolls off (budget tick) and, if over-budget, when usage drops under.
+        window_calls = session.query(
+            LLMCall.api_key_label,
+            LLMCall.model,
+            LLMCall.timestamp,
+            (LLMCall.prompt_tokens + LLMCall.completion_tokens).label('tokens'),
+        ).filter(
+            LLMCall.timestamp >= day_ago,
+            LLMCall.provider == 'groq',
+        ).order_by(LLMCall.timestamp.asc()).all()
+
+        # Group window_calls by (key, model)
+        calls_by_pair = {}
+        for c in window_calls:
+            calls_by_pair.setdefault((c.api_key_label, c.model), []).append(c)
+
+        budget = []
+        for r in budget_rows:
+            lim = limits.get(r.model)
+            tpd = lim.tpd if lim and lim.tpd else None
+            tokens_used = r.tokens or 0
+            pct = (tokens_used / tpd * 100) if tpd else None
+
+            pair_calls = calls_by_pair.get((r.api_key_label, r.model), [])
+
+            # Next tick: when the oldest call in the window rolls out of the
+            # 24h window, freeing up its tokens.
+            next_tick_at = None
+            next_tick_tokens = 0
+            if pair_calls:
+                oldest = pair_calls[0]
+                next_tick_at = oldest.timestamp + timedelta(hours=24)
+                next_tick_tokens = oldest.tokens or 0
+
+            # Free-at: only meaningful if currently over TPD. Iterate through
+            # the calls from oldest, subtracting each; the first call whose
+            # removal brings usage under TPD is when we become usable again.
+            free_at = None
+            if tpd and tokens_used >= tpd:
+                remaining = tokens_used
+                for c in pair_calls:
+                    remaining -= (c.tokens or 0)
+                    if remaining < tpd:
+                        free_at = c.timestamp + timedelta(hours=24)
+                        break
+
+            budget.append({
+                'key':   r.api_key_label,
+                'model': r.model,
+                'calls': r.calls,
+                'tokens': tokens_used,
+                'tpd':   tpd,
+                'pct':   pct,
+                'avg_dur': r.avg_dur or 0,
+                'next_tick_at': next_tick_at,
+                'next_tick_tokens': next_tick_tokens,
+                'free_at': free_at,
+            })
+        budget.sort(key=lambda x: (x['key'], x['model']))
+
+        # --- Per-day usage for last 7 days ---
+        # SQLite strftime to group by date
+        from sqlalchemy import cast, Date as SADate
+        daily_rows = session.query(
+            func.strftime('%Y-%m-%d', LLMCall.timestamp).label('day'),
+            LLMCall.api_key_label,
+            LLMCall.model,
+            func.count(LLMCall.id).label('calls'),
+            func.sum(LLMCall.prompt_tokens + LLMCall.completion_tokens).label('tokens'),
+        ).filter(
+            LLMCall.timestamp >= week_ago,
+            LLMCall.provider == 'groq',
+        ).group_by('day', LLMCall.api_key_label, LLMCall.model
+        ).order_by('day').all()
+
+        # Collect unique (key, model) combos and days seen
+        combos = sorted({(r.api_key_label, r.model) for r in daily_rows})
+        days   = sorted({r.day for r in daily_rows})
+        daily_lookup = {(r.day, r.api_key_label, r.model): r for r in daily_rows}
+
+        # --- Hourly chart data (last 7 days, per model) ---
+        # Query raw hourly token buckets, then compute a ROLLING 24h window
+        # as a percentage of each model's TPD. This mirrors how the rate
+        # limiter actually sees usage (a rolling window, not a calendar day).
+        chart_window_start = now - timedelta(days=8)  # extra day for rolling window warmup
+        chart_rows = session.query(
+            func.strftime('%Y-%m-%d %H:00', LLMCall.timestamp).label('hour'),
+            LLMCall.model,
+            func.sum(LLMCall.prompt_tokens + LLMCall.completion_tokens).label('tokens'),
+        ).filter(
+            LLMCall.timestamp >= chart_window_start,
+            LLMCall.provider == 'groq',
+        ).group_by('hour', LLMCall.model).order_by('hour').all()
+
+        # Build full hourly timeline (last 7 days)
+        timeline = []
+        cursor = (now - timedelta(days=7)).replace(minute=0, second=0, microsecond=0)
+        end    = now.replace(minute=0, second=0, microsecond=0)
+        while cursor <= end:
+            timeline.append(cursor)
+            cursor += timedelta(hours=1)
+
+        # Bucket raw hourly tokens per model (includes warmup day for rolling sum)
+        chart_models = sorted({r.model for r in chart_rows})
+        hourly_tokens = {m: {} for m in chart_models}
+        for r in chart_rows:
+            hourly_tokens[r.model][r.hour] = r.tokens or 0
+
+        # For each hour in timeline, compute rolling 24h sum / TPD * 100
+        chart_datasets = []
+        for m in chart_models:
+            lim = limits.get(m)
+            tpd = lim.tpd if lim and lim.tpd else None
+            data = []
+            for pt in timeline:
+                total = 0
+                for h in range(24):
+                    key = (pt - timedelta(hours=h)).strftime('%Y-%m-%d %H:00')
+                    total += hourly_tokens[m].get(key, 0)
+                if tpd:
+                    data.append(round(total / tpd * 100, 2))
+                else:
+                    data.append(None)
+            chart_datasets.append({'label': m, 'data': data, 'tpd': tpd})
+
+        # Axis labels: "MM-DD HH"
+        chart_labels = [pt.strftime('%m-%d %H') for pt in timeline]
+
+        # --- Recent calls ---
+        recent = session.query(LLMCall).filter(
+            LLMCall.provider == 'groq'
+        ).order_by(LLMCall.id.desc()).limit(100).all()
+
+        # --- All-time totals per model ---
+        totals = session.query(
+            LLMCall.model,
+            func.count(LLMCall.id).label('calls'),
+            func.sum(LLMCall.prompt_tokens + LLMCall.completion_tokens).label('tokens'),
+            func.avg(LLMCall.duration_seconds).label('avg_dur'),
+        ).filter(LLMCall.provider == 'groq'
+        ).group_by(LLMCall.model).order_by(func.count(LLMCall.id).desc()).all()
+
+        return render_template(
+            'llm_usage.html',
+            budget=budget,
+            days=days,
+            combos=combos,
+            daily_lookup=daily_lookup,
+            limits=limits,
+            recent=recent,
+            totals=totals,
+            now=now,
+            chart_labels=chart_labels,
+            chart_datasets=chart_datasets,
+        )
     finally:
         session.close()
 

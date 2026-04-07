@@ -1,0 +1,367 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>LLM Usage</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+            background: #f0f2f5;
+            min-height: 100vh;
+            padding: 20px;
+            color: #333;
+        }
+        .container { max-width: 1200px; margin: 0 auto; }
+
+        header {
+            background: white;
+            padding: 16px 24px;
+            border-radius: 10px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.1);
+            margin-bottom: 20px;
+        }
+        h1 { font-size: 22px; color: #333; margin-bottom: 10px; }
+        .nav { display: flex; gap: 6px; flex-wrap: wrap; }
+        .nav a { display: inline-block; padding: 5px 14px; border-radius: 4px; font-size: 13px;
+                 font-weight: 500; text-decoration: none; background: #e3f2fd; color: #1976D2; }
+        .nav a:hover { background: #bbdefb; }
+        .nav a.active { background: #1976D2; color: white; }
+
+        .section {
+            background: white;
+            border-radius: 10px;
+            padding: 20px 24px;
+            box-shadow: 0 1px 4px rgba(0,0,0,0.08);
+            margin-bottom: 20px;
+        }
+        h2 {
+            font-size: 13px;
+            font-weight: 700;
+            color: #888;
+            margin-bottom: 16px;
+            text-transform: uppercase;
+            letter-spacing: 0.8px;
+        }
+
+        /* Budget bars */
+        .budget-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+            gap: 16px;
+        }
+        .budget-card {
+            border: 1px solid #e5e7eb;
+            border-radius: 8px;
+            padding: 14px 16px;
+        }
+        .budget-card .title {
+            font-size: 13px;
+            font-weight: 600;
+            color: #333;
+            margin-bottom: 4px;
+        }
+        .budget-card .key-label {
+            font-size: 11px;
+            color: #888;
+            margin-bottom: 10px;
+        }
+        .bar-track {
+            height: 8px;
+            background: #e5e7eb;
+            border-radius: 4px;
+            overflow: hidden;
+            margin-bottom: 6px;
+        }
+        .bar-fill {
+            height: 100%;
+            border-radius: 4px;
+            transition: width 0.3s;
+        }
+        .bar-fill.green  { background: #10b981; }
+        .bar-fill.yellow { background: #f59e0b; }
+        .bar-fill.red    { background: #ef4444; }
+        .bar-fill.none   { background: #6366f1; width: 0 !important; }
+        .budget-meta {
+            display: flex;
+            justify-content: space-between;
+            font-size: 12px;
+            color: #555;
+        }
+        .budget-meta .pct { font-weight: 700; }
+        .budget-meta .pct.green  { color: #10b981; }
+        .budget-meta .pct.yellow { color: #f59e0b; }
+        .budget-meta .pct.red    { color: #ef4444; }
+        .reset-line {
+            margin-top: 8px;
+            padding-top: 8px;
+            border-top: 1px dashed #eee;
+            font-size: 11px;
+            color: #888;
+        }
+        .reset-line.reset-blocked {
+            color: #ef4444;
+            font-weight: 600;
+        }
+
+        /* Tables */
+        .table-scroll {
+            overflow-x: auto;
+            -webkit-overflow-scrolling: touch;
+            margin: 0 -8px;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            font-size: 13px;
+        }
+        th {
+            text-align: left;
+            font-size: 11px;
+            font-weight: 600;
+            color: #888;
+            text-transform: uppercase;
+            letter-spacing: 0.5px;
+            padding: 6px 10px;
+            border-bottom: 2px solid #e5e7eb;
+        }
+        td {
+            padding: 8px 10px;
+            border-bottom: 1px solid #f3f4f6;
+            vertical-align: top;
+        }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #f9fafb; }
+        td.num { text-align: right; font-variant-numeric: tabular-nums; }
+        td.model { font-family: monospace; font-size: 12px; color: #555; }
+        td.key { font-size: 11px; color: #888; }
+        td.dim { color: #aaa; font-size: 12px; }
+
+        /* Daily table cells */
+        .day-cell { text-align: right; font-variant-numeric: tabular-nums; }
+        .day-cell.empty { color: #ddd; }
+
+        .ts { font-size: 11px; color: #aaa; }
+    </style>
+</head>
+<body>
+<div class="container">
+
+    <header>
+        <h1>LLM Usage</h1>
+        <nav class="nav">
+            <a href="/">Events</a>
+            <a href="/calendar">Calendar</a>
+            <a href="/health">Scraper Health</a>
+            <a href="/llm-usage" class="active">LLM Usage</a>
+            <a href="/profile">Preferences</a>
+        </nav>
+    </header>
+
+    <!-- Today's budget -->
+    <div class="section">
+        <h2>Today's Token Budget (rolling 24h)</h2>
+        {% if budget %}
+        <div class="budget-grid">
+            {% for b in budget %}
+            {% if b.tpd %}
+                {% set pct = b.pct | round(1) %}
+                {% set color = 'green' if pct < 60 else ('yellow' if pct < 85 else 'red') %}
+            {% else %}
+                {% set pct = None %}
+                {% set color = 'none' %}
+            {% endif %}
+            <div class="budget-card">
+                <div class="title">{{ b.model }}</div>
+                <div class="key-label">{{ b.key }}</div>
+                <div class="bar-track">
+                    <div class="bar-fill {{ color }}" style="width: {{ [pct or 0, 100] | min }}%"></div>
+                </div>
+                <div class="budget-meta">
+                    <span>{{ '{:,}'.format(b.tokens) }} / {{ '{:,}'.format(b.tpd) if b.tpd else '∞' }} tokens</span>
+                    <span class="pct {{ color }}">
+                        {% if pct is not none %}{{ pct }}%{% else %}no daily limit{% endif %}
+                    </span>
+                </div>
+                <div class="budget-meta" style="margin-top:4px; color:#aaa;">
+                    {{ b.calls }} calls &nbsp;·&nbsp; avg {{ '%.1f'|format(b.avg_dur) }}s/call
+                </div>
+                {% if b.free_at %}
+                <div class="reset-line reset-blocked">
+                    Over limit — free at {{ b.free_at.strftime('%m-%d %H:%M UTC') }}
+                </div>
+                {% elif b.next_tick_at %}
+                <div class="reset-line">
+                    Next tick: {{ b.next_tick_at.strftime('%H:%M UTC') }}
+                    (+{{ '{:,}'.format(b.next_tick_tokens) }} tokens freed)
+                </div>
+                {% endif %}
+            </div>
+            {% endfor %}
+        </div>
+        {% else %}
+        <p style="color:#aaa; font-size:13px;">No Groq calls in the last 24 hours.</p>
+        {% endif %}
+    </div>
+
+    <!-- Hourly usage chart -->
+    {% if chart_labels %}
+    <div class="section">
+        <h2>Rolling 24h Usage — Last 7 Days (% of daily limit)</h2>
+        <div style="position:relative; height:260px; width:100%;">
+            <canvas id="usageChart"></canvas>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- Daily usage table -->
+    {% if days %}
+    <div class="section">
+        <h2>Daily Token Usage — Last 7 Days</h2>
+        <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Key</th>
+                    <th>Model</th>
+                    {% for day in days %}<th style="text-align:right">{{ day[5:] }}</th>{% endfor %}
+                    <th style="text-align:right">Total</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for key, model in combos %}
+                {% set row_total = namespace(v=0) %}
+                <tr>
+                    <td class="key">{{ key }}</td>
+                    <td class="model">{{ model }}</td>
+                    {% for day in days %}
+                        {% set r = daily_lookup.get((day, key, model)) %}
+                        {% if r %}
+                            {% set row_total.v = row_total.v + (r.tokens or 0) %}
+                            <td class="day-cell">{{ '{:,}'.format(r.tokens or 0) }}</td>
+                        {% else %}
+                            <td class="day-cell empty">—</td>
+                        {% endif %}
+                    {% endfor %}
+                    <td class="day-cell" style="font-weight:600">{{ '{:,}'.format(row_total.v) }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+    {% endif %}
+
+    <!-- All-time totals -->
+    <div class="section">
+        <h2>All-Time Totals by Model</h2>
+        <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Model</th>
+                    <th style="text-align:right">Calls</th>
+                    <th style="text-align:right">Total Tokens</th>
+                    <th style="text-align:right">Avg Tokens/Call</th>
+                    <th style="text-align:right">Avg Duration</th>
+                    <th style="text-align:right">TPD Limit</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in totals %}
+                {% set lim = limits.get(r.model) %}
+                <tr>
+                    <td class="model">{{ r.model }}</td>
+                    <td class="num">{{ '{:,}'.format(r.calls) }}</td>
+                    <td class="num">{{ '{:,}'.format(r.tokens or 0) }}</td>
+                    <td class="num">{{ '{:,.0f}'.format((r.tokens or 0) / r.calls) }}</td>
+                    <td class="num">{{ '%.1f'|format(r.avg_dur) }}s</td>
+                    <td class="num dim">{{ '{:,}'.format(lim.tpd) if lim and lim.tpd else '—' }}</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+    <!-- Recent calls -->
+    <div class="section">
+        <h2>Recent Calls (last 100)</h2>
+        <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Time (UTC)</th>
+                    <th>Key</th>
+                    <th>Model</th>
+                    <th>Type</th>
+                    <th style="text-align:right">Prompt</th>
+                    <th style="text-align:right">Completion</th>
+                    <th style="text-align:right">Total</th>
+                    <th style="text-align:right">Duration</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for r in recent %}
+                <tr>
+                    <td class="ts">{{ r.timestamp.strftime('%m-%d %H:%M:%S') }}</td>
+                    <td class="key">{{ r.api_key_label }}</td>
+                    <td class="model">{{ r.model }}</td>
+                    <td class="dim">{{ r.call_type }}</td>
+                    <td class="num">{{ '{:,}'.format(r.prompt_tokens or 0) }}</td>
+                    <td class="num">{{ '{:,}'.format(r.completion_tokens or 0) }}</td>
+                    <td class="num" style="font-weight:500">{{ '{:,}'.format((r.prompt_tokens or 0) + (r.completion_tokens or 0)) }}</td>
+                    <td class="num">{{ '%.1f'|format(r.duration_seconds) }}s</td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+    </div>
+
+</div>
+{% if chart_labels %}
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script>
+const palette = ['#1976D2','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899'];
+const datasets = {{ chart_datasets | tojson }}.map((ds, i) => ({
+    label: ds.label + (ds.tpd ? ` (TPD ${ds.tpd.toLocaleString()})` : ' (no TPD)'),
+    data: ds.data,
+    borderColor: palette[i % palette.length],
+    backgroundColor: palette[i % palette.length] + '22',
+    fill: true,
+    tension: 0.25,
+    pointRadius: 0,
+    spanGaps: true,
+}));
+new Chart(document.getElementById('usageChart'), {
+    type: 'line',
+    data: { labels: {{ chart_labels | tojson }}, datasets },
+    options: {
+        responsive: true,
+        maintainAspectRatio: false,
+        interaction: { mode: 'index', intersect: false },
+        scales: {
+            x: { ticks: { font: { size: 10 }, maxRotation: 0, autoSkip: true, maxTicksLimit: 8 } },
+            y: {
+                min: 0,
+                suggestedMax: 100,
+                ticks: { font: { size: 10 }, callback: v => v + '%' },
+                title: { display: true, text: '% of daily limit', font: { size: 11 } }
+            }
+        },
+        plugins: {
+            legend: { position: 'bottom', labels: { font: { size: 11 }, boxWidth: 12 } },
+            tooltip: {
+                callbacks: {
+                    label: c => `${c.dataset.label}: ${c.parsed.y == null ? '—' : c.parsed.y + '%'}`
+                }
+            }
+        }
+    }
+});
+</script>
+{% endif %}
+</body>
+</html>

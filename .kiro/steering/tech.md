@@ -24,8 +24,8 @@
 
 Required environment variables in `.env`:
 - `GROQ_API_KEY` - Groq API key for LLM recommendations
-- `HTTP_PROXY` (optional) - Corporate firewall proxy
-- `HTTPS_PROXY` (optional) - Corporate firewall proxy
+- `HTTP_PROXY` (optional) - HTTP proxy
+- `HTTPS_PROXY` (optional) - HTTPS proxy
 
 ## Common Commands
 
@@ -71,5 +71,5 @@ No build step required - pure Python application. Dependencies managed via `requ
 
 - Requires Chrome/Chromium installed for Selenium
 - ChromeDriver auto-downloaded by webdriver-manager or can be placed locally
-- SSL verification disabled for corporate firewall compatibility
+- SSL verification disabled
 - Headless Chrome used for scraping (no GUI required)

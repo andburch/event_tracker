@@ -29,9 +29,10 @@ KNOWN LIMITATIONS
 """
 
 import re, json, time, os, shutil, requests, urllib3, logging, threading
+import openai
 from datetime import datetime
 from bs4 import BeautifulSoup
-from llm_provider import chat_complete
+from llm_provider import call_llm
 import config
 
 # Configure logging
@@ -198,7 +199,7 @@ def _ask_llm_single(
 
     for attempt in range(retries):
         try:
-            content = chat_complete(
+            content = call_llm(
                 messages=[{'role': 'user', 'content': prompt}],
                 call_type='scraping',
                 temperature=0.1,
@@ -206,12 +207,16 @@ def _ask_llm_single(
                 provider=provider,
             )
             return json.loads(content)
+        except openai.RateLimitError:
+            # Rate limiting is handled inside call_llm() (key switching + waiting).
+            # If we get here, all keys are exhausted and no fallback succeeded.
+            raise
         except Exception as e:
             err = str(e)
-            if ('503' in err or '429' in err) and attempt < retries - 1:
+            if '503' in err and attempt < retries - 1:
                 wait = config.LLM_RETRY_BASE_DELAY * (attempt + 1)
-                log.warning(f"{'503' if '503' in err else '429'} error, retrying in {wait}s...")
-                print(f"\n    {'503' if '503' in err else '429'} error, retrying in {wait}s...")
+                log.warning(f"503 error, retrying in {wait}s...")
+                print(f"\n    503 error, retrying in {wait}s...")
                 time.sleep(wait)
             else:
                 raise
@@ -274,8 +279,8 @@ def fetch_requests(url: str) -> str:
     """
     Fetch a static HTML page using requests (no JavaScript execution).
 
-    SSL verification disabled for corporate firewall compatibility.
-    
+    SSL verification disabled.
+
     Args:
         url: URL to fetch
     
@@ -299,8 +304,7 @@ def get_driver():
     """
     Create (or return existing) headless Chrome WebDriver.
 
-    Uses local chromedriver.exe in project root to avoid network downloads
-    behind the corporate firewall.
+    Uses local chromedriver.exe in project root to avoid network downloads.
     
     Thread-safe: Uses a lock to prevent concurrent driver creation.
     """

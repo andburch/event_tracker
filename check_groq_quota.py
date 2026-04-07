@@ -30,7 +30,7 @@ def check_quota(model: str):
 
     # Use a raw httpx call so we can inspect response headers directly.
     # The Groq SDK wraps the response and doesn't expose headers easily.
-    transport = httpx.HTTPTransport(verify=False)  # Corporate SSL bypass
+    transport = httpx.HTTPTransport(verify=False)
     with httpx.Client(transport=transport) as client:
         resp = client.post(
             'https://api.groq.com/openai/v1/chat/completions',
@@ -85,14 +85,14 @@ if __name__ == '__main__':
             print("ERROR: --model requires a model name")
             sys.exit(1)
     else:
-        # Check both models used by the application
+        # Check every unique model used by the application
         print("="*70)
         print("GROQ API QUOTA CHECK")
         print("="*70)
         print()
-        
-        check_quota(config.LLM_SCRAPING_MODEL)
-        
-        # Only check scoring model if it's different
-        if config.LLM_SCORING_MODEL != config.LLM_SCRAPING_MODEL:
-            check_quota(config.LLM_SCORING_MODEL)
+
+        seen = set()
+        for model in config.LLM_SCRAPING_MODELS + config.LLM_SCORING_MODELS:
+            if model not in seen:
+                check_quota(model)
+                seen.add(model)

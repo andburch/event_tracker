@@ -38,8 +38,8 @@ def ping_groq():
 
 
 def _make_client():
-    """Build Groq client with SSL verification disabled for corporate firewalls."""
-    # Always disable SSL verification — corporate firewall uses self-signed cert
+    """Build Groq client with SSL verification disabled."""
+    # SSL verification disabled
     transport = httpx.HTTPTransport(verify=False)
     http_client = httpx.Client(transport=transport)
     return Groq(api_key=config.GROQ_API_KEY, http_client=http_client)

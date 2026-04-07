@@ -490,7 +490,7 @@ python server/app.py
 - User-agent spoofing via CDP
 - Fresh Selenium sessions per site
 - Configurable wait times
-- SSL verification disabled (corporate firewall)
+- SSL verification disabled
 
 ### Data Security
 - API keys in `.env` (not in git)

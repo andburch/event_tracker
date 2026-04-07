@@ -16,13 +16,10 @@ Powered by Groq. Two distinct LLM tasks live here:
 
 Models
 ------
-SCORE_MODEL   llama-3.1-8b-instant    Fast and cheap; scoring is simple 0-1 classification
-SUMMARY_MODEL llama-3.3-70b-versatile Better reasoning for nuanced preference summarization
-
-SSL note
---------
-The corporate network uses a self-signed certificate. The Groq SDK uses httpx
-internally, so we pass a custom httpx.Client with verify=False to bypass it.
+Both tasks call call_llm() from llm_provider, which routes to whichever model
+list is configured for the call_type ('scoring' or 'summary'). See
+config.LLM_SCORING_MODELS and the rate limiter for the actual model selection
+logic — this module no longer hardcodes model names.
 """
 
 import json
@@ -31,7 +28,7 @@ import logging
 from openai import RateLimitError, APIStatusError
 from datetime import datetime
 import config
-from llm_provider import chat_complete, is_available
+from llm_provider import call_llm, is_available
 
 log = logging.getLogger(__name__)
 
@@ -275,7 +272,7 @@ def _call_batch_score(events: list, taste_prompt: str, preference_summary: str, 
 
     try:
         raw = _call_with_retry(
-            chat_complete,
+            call_llm,
             messages=[{'role': 'user', 'content': prompt}],
             call_type='scoring',
             temperature=0.1,
@@ -456,7 +453,7 @@ def _generate_rolling_summary(
 
     try:
         return _call_with_retry(
-            chat_complete,
+            call_llm,
             messages=[{'role': 'user', 'content': prompt}],
             call_type='summary',
             temperature=0.4,

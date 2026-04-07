@@ -229,7 +229,7 @@ SITES = {
     'odysea': (
         'OdySea Aquarium',
         'https://www.odyseaaquarium.com/events/',
-        True, 10, 5, 'Previously blocked by corporate firewall',
+        True, 10, 5, '',
         ('#e0f2fe', '#0284c7', '#0c4a6e'),
         None,  # Default LLM pagination
     ),

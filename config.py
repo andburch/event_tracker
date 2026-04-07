@@ -19,12 +19,20 @@ load_dotenv()
 # Get one free at https://console.groq.com
 GROQ_API_KEY = os.getenv('GROQ_API_KEY')
 
+# Optional second Groq API key. When set, the rate limiter switches between
+# keys on 429 errors to maximize throughput during bulk scraping.
+GROQ_API_KEY_2 = os.getenv('GROQ_API_KEY_2', '')
+
+# When True, fall back to Ollama if both Groq keys are daily-exhausted.
+# Requires OLLAMA_URL to be reachable.
+GROQ_FALLBACK_TO_OLLAMA = os.getenv('GROQ_FALLBACK_TO_OLLAMA', 'false').lower() == 'true'
+
 # ---------------------------------------------------------------------------
 # Proxy settings (optional)
 # ---------------------------------------------------------------------------
 
-# Set these in .env if you're behind a corporate firewall that requires a proxy.
-# Example: HTTP_PROXY=http://proxy.company.com:8080
+# Set these in .env if a proxy is required.
+# Example: HTTP_PROXY=http://proxy.example.com:8080
 HTTP_PROXY  = os.getenv('HTTP_PROXY')
 HTTPS_PROXY = os.getenv('HTTPS_PROXY')
 
@@ -64,15 +72,16 @@ OLLAMA_SCORING_MODEL  = os.environ.get('OLLAMA_SCORING_MODEL',  'gemma3:4b')
 # LLM Model Configuration
 # ---------------------------------------------------------------------------
 
-# Model used for event extraction during scraping
-# llama-3.3-70b-versatile: Better output quality, higher TPM (12k vs 6k),
-#   but lower RPD (1k vs 14.4k). Used for all scraping.
-# llama-3.1-8b-instant: Faster, higher daily limit (14.4k RPD), lower quality
-LLM_SCRAPING_MODEL = 'llama-3.3-70b-versatile'  # Back to better model
+# Ordered list of models to use for event extraction during scraping.
+# The rate limiter tries each (key, model) combination in order:
+# all keys with model[0] first, then all keys with model[1], etc.
+# Add more models here to expand the combinatorial quota space.
+# llama-3.3-70b-versatile: Better output quality, 12k TPM, 100k TPD per key
+# llama-3.1-8b-instant: Faster, lower quality, 6k TPM, 500k TPD per key
+LLM_SCRAPING_MODELS = ['llama-3.3-70b-versatile', 'moonshotai/kimi-k2-instruct']
 
-# Model used for event scoring/recommendation
-# Can be the same or different from scraping model
-LLM_SCORING_MODEL = 'llama-3.3-70b-versatile'
+# Ordered list of models to use for event scoring/recommendation.
+LLM_SCORING_MODELS = ['llama-3.3-70b-versatile']
 
 # ---------------------------------------------------------------------------
 # LLM Scraping Configuration

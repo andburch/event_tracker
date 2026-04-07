@@ -196,6 +196,7 @@
             <a href="/calendar">Calendar</a>
             <a href="/profile">Preferences</a>
             <a href="/health" class="active">Scraper Health</a>
+            <a href="/llm-usage">LLM Usage</a>
         </nav>
     </header>
 
@@ -224,6 +225,9 @@
             {% set stats = scraper_stats.get(scraper, {}) %}
             {% set events = event_stats.get(scraper, {'total': 0, 'future': 0}) %}
 
+            {# Classification is driven primarily by the LATEST run — that's
+               the canonical "is it working right now" signal. Older failures
+               in the window only show up as a secondary "Flaky" flag. #}
             {% if stats.total_runs == 0 %}
                 {% set status = 'warning' %}{% set label = 'No Runs' %}
             {% elif not stats.last_success %}
@@ -232,12 +236,10 @@
                 {% set status = 'warning' %}{% set label = 'Empty' %}
             {% elif stats.avg_events > 0 and stats.last_events_found < stats.avg_events * 0.5 %}
                 {% set status = 'warning' %}{% set label = 'Low Yield' %}
-            {% elif stats.success_rate >= 80 %}
-                {% set status = 'healthy' %}{% set label = 'Healthy' %}
-            {% elif stats.success_rate >= 50 %}
-                {% set status = 'warning' %}{% set label = 'Warning' %}
+            {% elif stats.success_rate < 50 %}
+                {% set status = 'warning' %}{% set label = 'Flaky' %}
             {% else %}
-                {% set status = 'error' %}{% set label = 'Error' %}
+                {% set status = 'healthy' %}{% set label = 'Healthy' %}
             {% endif %}
 
             {% if not stats.last_run %}
@@ -340,39 +342,6 @@
     </div>
     {% endif %}
 
-    {% if llm_stats %}
-    <h2>LLM Provider Timing <span style="font-size:13px;font-weight:400;color:#666;">(last 7 days)</span></h2>
-    <table style="width:100%;border-collapse:collapse;background:white;border-radius:8px;overflow:hidden;box-shadow:0 2px 4px rgba(0,0,0,0.1);margin-bottom:20px;">
-        <thead>
-            <tr style="background:#f1f5f9;text-align:left;">
-                <th style="padding:10px 14px;font-size:13px;color:#555;">Provider</th>
-                <th style="padding:10px 14px;font-size:13px;color:#555;">Call Type</th>
-                <th style="padding:10px 14px;font-size:13px;color:#555;">Calls</th>
-                <th style="padding:10px 14px;font-size:13px;color:#555;">Avg Duration</th>
-                <th style="padding:10px 14px;font-size:13px;color:#555;">Avg Prompt Tokens</th>
-                <th style="padding:10px 14px;font-size:13px;color:#555;">Avg Completion Tokens</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in llm_stats %}
-            <tr style="border-top:1px solid #e2e8f0;">
-                <td style="padding:10px 14px;font-size:13px;">
-                    <span style="display:inline-block;padding:2px 8px;border-radius:4px;font-weight:600;
-                        background:{% if row.provider == 'groq' %}#dbeafe{% else %}#dcfce7{% endif %};
-                        color:{% if row.provider == 'groq' %}#1e40af{% else %}#15803d{% endif %};">
-                        {{ row.provider }}
-                    </span>
-                </td>
-                <td style="padding:10px 14px;font-size:13px;color:#374151;">{{ row.call_type }}</td>
-                <td style="padding:10px 14px;font-size:13px;color:#374151;">{{ row.calls }}</td>
-                <td style="padding:10px 14px;font-size:13px;font-weight:600;color:#111;">{{ "%.1f"|format(row.avg_duration) }}s</td>
-                <td style="padding:10px 14px;font-size:13px;color:#374151;">{{ "%.0f"|format(row.avg_prompt_tokens) if row.avg_prompt_tokens else '—' }}</td>
-                <td style="padding:10px 14px;font-size:13px;color:#374151;">{{ "%.0f"|format(row.avg_completion_tokens) if row.avg_completion_tokens else '—' }}</td>
-            </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    {% endif %}
 
     <div class="footer-note">Updated {{ current_time.strftime('%Y-%m-%d %H:%M:%S') }} · Showing last 7 days</div>
 </div>

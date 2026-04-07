@@ -172,7 +172,7 @@ python _test_llm_scrape.py list
 
 ChromeDriver is bundled as `chromedriver.exe` in the project root. If it doesn't match your Chrome version, download the correct version from https://chromedriver.chromium.org/
 
-## Corporate Firewall Notes
+## Network Notes
 
 - SSL verification is disabled on all HTTP requests and the Groq client
 - Set `HTTP_PROXY` / `HTTPS_PROXY` in `.env` if needed

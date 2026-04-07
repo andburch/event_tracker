@@ -8,12 +8,14 @@ feedback_history         — Immutable log of every thumbs-up / thumbs-down clic
 user_profile             — Single-row table holding the active preference profile.
 preference_profile_history — Append-only log of every AI-generated summary.
 scraper_runs             — Audit log of every scraper execution.
+llm_calls                — Per-call timing record for every LLM API call made.
+groq_model_limits        — Per-model rate limits from Groq docs (seeded at startup).
 
 The engine and Session factory are created at module import time so any file
 that does `from database.models import Session` gets a ready-to-use factory.
 """
 
-from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Text, Boolean
+from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Text, Boolean, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 from datetime import datetime
 import config
@@ -181,7 +183,7 @@ class LLMCall(Base):
     Per-call timing record for every LLM API call made by the app.
 
     Used to compare Groq vs Ollama performance on the /health dashboard.
-    Written by llm_provider._log_call() after every successful chat_complete() call.
+    Written by llm_provider._log_call() after every successful call_llm() call.
 
     call_type: 'scraping', 'scoring', or 'summary'
     """
@@ -195,6 +197,33 @@ class LLMCall(Base):
     prompt_tokens     = Column(Integer, nullable=True)
     completion_tokens = Column(Integer, nullable=True)
     duration_seconds  = Column(Float,   nullable=False)
+    api_key_label     = Column(String(50), nullable=True)  # 'groq_key_1', 'groq_key_2', 'ollama'
+
+
+# ---------------------------------------------------------------------------
+# GroqModelLimit
+# ---------------------------------------------------------------------------
+
+class GroqModelLimit(Base):
+    """
+    Rate limits for each Groq model on the free tier.
+
+    Seeded at startup from Groq's published limits
+    (https://console.groq.com/docs/rate-limits). Rows are never overwritten
+    automatically — edit them manually if you upgrade to a paid plan or
+    Groq changes their limits.
+
+    tpd is nullable: some models (e.g. groq/compound) have no daily token cap.
+    tpm is nullable: audio models (whisper) are measured in audio-minutes, not tokens.
+    """
+    __tablename__ = 'groq_model_limits'
+
+    model      = Column(String(200), primary_key=True)
+    rpm        = Column(Integer, nullable=True)   # requests per minute
+    rpd        = Column(Integer, nullable=True)   # requests per day
+    tpm        = Column(Integer, nullable=True)   # tokens per minute
+    tpd        = Column(Integer, nullable=True)   # tokens per day (null = no daily token cap)
+    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
 
 
 # ---------------------------------------------------------------------------
@@ -206,3 +235,49 @@ class LLMCall(Base):
 engine  = create_engine(config.DATABASE_URL)
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
+
+# Migrate: add api_key_label to llm_calls if upgrading from an older schema.
+# SQLAlchemy's create_all won't add columns to existing tables, so we do it
+# manually. This is a no-op if the column already exists.
+with engine.connect() as _conn:
+    _cols = [r[1] for r in _conn.execute(text("PRAGMA table_info(llm_calls)")).fetchall()]
+    if 'api_key_label' not in _cols:
+        _conn.execute(text("ALTER TABLE llm_calls ADD COLUMN api_key_label TEXT"))
+        _conn.commit()
+
+# Seed groq_model_limits with free-tier limits from:
+# https://console.groq.com/docs/rate-limits
+# Rows are only inserted if they don't already exist, so manual edits
+# (e.g. upgrading to a paid tier) are preserved across restarts.
+_GROQ_LIMITS_SEED = [
+    # model                                      rpm    rpd      tpm     tpd
+    ('allam-2-7b',                               30,    7000,    6000,   500000),
+    ('canopylabs/orpheus-arabic-saudi',          10,    100,     1200,   3600),
+    ('canopylabs/orpheus-v1-english',            10,    100,     1200,   3600),
+    ('groq/compound',                            30,    250,     70000,  None),
+    ('groq/compound-mini',                       30,    250,     70000,  None),
+    ('llama-3.1-8b-instant',                     30,    14400,   6000,   500000),
+    ('llama-3.3-70b-versatile',                  30,    1000,    12000,  100000),
+    ('meta-llama/llama-4-scout-17b-16e-instruct',30,    1000,    30000,  500000),
+    ('meta-llama/llama-prompt-guard-2-22m',      30,    14400,   15000,  500000),
+    ('meta-llama/llama-prompt-guard-2-86m',      30,    14400,   15000,  500000),
+    ('moonshotai/kimi-k2-instruct',              60,    1000,    10000,  300000),
+    ('moonshotai/kimi-k2-instruct-0905',         60,    1000,    10000,  300000),
+    ('openai/gpt-oss-120b',                      30,    1000,    8000,   200000),
+    ('openai/gpt-oss-20b',                       30,    1000,    8000,   200000),
+    ('openai/gpt-oss-safeguard-20b',             30,    1000,    8000,   200000),
+    ('qwen/qwen3-32b',                           60,    1000,    6000,   500000),
+    ('whisper-large-v3',                         20,    2000,    None,   None),
+    ('whisper-large-v3-turbo',                   20,    2000,    None,   None),
+]
+with engine.connect() as _conn:
+    _existing = {
+        r[0] for r in _conn.execute(text("SELECT model FROM groq_model_limits")).fetchall()
+    }
+    for _model, _rpm, _rpd, _tpm, _tpd in _GROQ_LIMITS_SEED:
+        if _model not in _existing:
+            _conn.execute(text(
+                "INSERT INTO groq_model_limits (model, rpm, rpd, tpm, tpd) "
+                "VALUES (:model, :rpm, :rpd, :tpm, :tpd)"
+            ), {'model': _model, 'rpm': _rpm, 'rpd': _rpd, 'tpm': _tpm, 'tpd': _tpd})
+    _conn.commit()
