@@ -77,7 +77,7 @@ SITES = {
     'rak': (
         'Raising Arizona Kids',
         'https://www.raisingarizonakids.com/calendar/',
-        True, 8, 5, 'WordPress /page/N/ pagination',
+        True, 8, 10, 'WordPress /page/N/ pagination',
         ('#ecfeff', '#0891b2', '#164e63'),
         None,  # Default LLM pagination (LLM extracts /page/N/ URLs)
     ),
