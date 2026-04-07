@@ -10,6 +10,7 @@ services:
       - .env
     environment:
       - DATABASE_URL=sqlite:////data/events.db
+      - OLLAMA_URL=http://ollama:11434
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
@@ -18,5 +19,14 @@ services:
       retries: 3
       start_period: 15s
 
+  ollama:
+    image: ollama/ollama
+    ports:
+      - "11434:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+
 volumes:
   events_data:
+  ollama_data:

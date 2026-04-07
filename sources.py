@@ -5,7 +5,12 @@ Each entry in SITES defines everything about a source:
   - Scraping config  (url, selenium, wait, max_pages, pagination_config)
   - Display metadata (display_name, color)
 
-Both llm_scrape_core.py and server/app.py import from here.
+TRIM_PATTERNS strips site-specific boilerplate (nav menus, filter sidebars,
+cookie consent walls) from cleaned HTML before it reaches the LLM.  This
+reduces token usage and speeds up local models significantly.
+
+Both llm_scrape_core.py and server/app.py import SITES from here.
+pagination_engine.py imports TRIM_PATTERNS from here.
 Adding a new site means editing only this file.
 
 SITES entry format:
@@ -15,6 +20,12 @@ color: (background, border, text) CSS hex strings for calendar chips.
 pagination_config: Dict defining pagination behavior (see pagination_engine.py for details)
     - If None or omitted: Uses default LLM pagination (LLM extracts next_page_url)
     - Otherwise: Dict with 'type' key and type-specific config
+
+TRIM_PATTERNS entry format:
+    key: string that marks the END of boilerplate (inclusive).
+         Everything up to and including this string is stripped.
+         None means no trim (page starts directly with events, or site is bot-blocked).
+         See HOW_TO_ADD_SCRAPERS.md for how to find and verify trim patterns.
 """
 
 from datetime import datetime, timedelta
@@ -243,6 +254,106 @@ SITES = {
         ('#fef3c7', '#ca8a04', '#713f12'),
         None,  # Default LLM pagination
     ),
+}
+
+# ---------------------------------------------------------------------------
+# Boilerplate trim patterns
+# ---------------------------------------------------------------------------
+# Many sites prepend nav menus, filter sidebars, cookie banners, or calendar
+# grids to their event pages.  This text wastes LLM tokens and slows local
+# models by 1.5–2.6×.  TRIM_PATTERNS removes it before the text reaches
+# ask_llm().
+#
+# HOW IT WORKS
+# Each value is a string that marks the END of the boilerplate (inclusive).
+# pagination_engine.apply_trim() finds the first occurrence of this string and
+# discards everything up to and including it.
+#
+# HOW TO FIND THE RIGHT STRING FOR A NEW SITE
+#  1. Run: python3 _collect_artifacts.py          # saves debug_artifacts/<key>/page_1_cleaned.txt
+#  2. Read the artifact: head -200 debug_artifacts/<key>/page_1_cleaned.txt
+#  3. Find the last line of boilerplate before the first real event appears
+#  4. Pick a multi-line span (2–3 lines) that:
+#       - Is specific to the UI (not something that could be an event title/venue)
+#       - Does NOT change month-to-month (avoid category names on rotating sites)
+#       - Is stable across pagination pages (appears on page 2, 3, etc.)
+#  5. Verify it appears exactly once: python3 -c "
+#         text = open('debug_artifacts/<key>/page_1_cleaned.txt').read()
+#         print(text.count('your pattern here'))
+#     "
+#  6. Add the entry here. Set to None if the page opens directly with events.
+# ---------------------------------------------------------------------------
+TRIM_PATTERNS = {
+    # Fibber Magee's — nav header (stable); category filters follow but are only
+    # 8 harmless lines.  Don't key on category names — they change.
+    'fibber':              "Upcoming Events\nCalender View [/menu-1]\n",
+
+    # Dirty Drummer — full 7-day calendar header row; far more specific than Fr/Sa alone
+    'dirtydrummer':        "\nSu\nMo\nTu\nWe\nTh\nFr\nSa\n",
+
+    # Yucca Tap Room — page opens directly with events; nothing to trim
+    'yuccatap':            None,
+
+    # Raising Arizona Kids — 2-line filter widget label before event listing
+    'rak':                 "Displaying:\nAll\n",
+
+    # City of Chandler — 3-line sequence at end of location filter + submit button;
+    # more robust than just "\nGo\n" which is a single common word
+    'chandler':            "\nWindmills West Park\nWinn Park\nGo\n",
+
+    # City of Scottsdale — filter sidebar with 70+ category options
+    'scottsdale':          "\nReset all filters\n",
+
+    # City of Gilbert — CivicPlus calendar; full day-of-week header row (appears once)
+    'gilbert':             "\nSunday\nMonday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\n",
+
+    # City of Phoenix — featured event + browse-by-topic nav; hidden menu marker
+    'phoenix':             "\nclose menu\n",
+
+    # City of Mesa — minimal 3-line header before event list
+    'mesa':                "\nEvents listing\n",
+
+    # Chandler Public Library (BiblioCommons) — filter sidebar before listing
+    'chandler_lib':        "\nEvent items\n",
+
+    # Tempe Public Library — complex calendar UI (~175 lines); cut right before events
+    'tempe_lib':           "\nCreate Brochure\n",
+
+    # AZ Museum of Natural History — slideshow nav (8 lines)
+    'azmnh':               "\nCalendar [/azmnh-calendar]\n",
+
+    # Chandler Center for the Arts — genre filter list
+    'chandler_center':     "\nSearch by Title\n",
+
+    # Mesa Arts Center — featured carousel + date-picker filter UI (~210 lines)
+    'mesa_arts':           "\nYour selection will automatically update the results below.\n",
+
+    # Scottsdale Arts — genre/location/setting filter lists; view-mode toggle
+    'scottsdale_arts':     "\nCalendar View\nFilter\n",
+
+    # ASU Kerr Cultural Center — filter accordions; last accordion is Series
+    'asu_kerr':            "\nSeries\n:\n",
+
+    # Tempe Center for the Arts — CivicPlus calendar (same pattern as gilbert)
+    'tca':                 "\nSunday\nMonday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\n",
+
+    # Downtown Tempe — featured-events hero + filter UI; end of category list
+    'downtown_tempe':      "\nWalks / Runs\nTempe Beach Park\nASU\n",
+
+    # Desert Botanical Garden — enormous cookie-consent block (~1000 lines before events)
+    'dbg':                 "\nUPCOMING EVENTS & EXHIBITS\n",
+
+    # OdySea Aquarium — Cloudflare-blocked; no usable artifact, no trim possible
+    'odysea':              None,
+
+    # Hale Theatre — Selenium timeout; no usable artifact, no trim possible
+    'hale_theatre':        None,
+
+    # Arizona Mushroom Society — nav menu (duplicated) + login form before events
+    'az_mushroom':         "\nAMS EVENT CALENDAR\n",
+
+    # Backcountry Hunters & Anglers — US state chapter list + interest filters
+    'backcountry_hunters': "\n-- Select Location --\n",
 }
 
 # ---------------------------------------------------------------------------

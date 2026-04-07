@@ -48,6 +48,19 @@ PHOENIX_LON = -112.0740
 SEARCH_RADIUS_MILES = 30  # Maximum distance from center to consider "local"
 
 # ---------------------------------------------------------------------------
+# LLM Provider
+# ---------------------------------------------------------------------------
+
+# Which provider to use by default: 'groq' or 'ollama'
+LLM_PROVIDER = os.environ.get('LLM_PROVIDER', 'groq')
+
+# Ollama settings (used when LLM_PROVIDER='ollama' or provider='ollama' per-call)
+OLLAMA_URL            = os.environ.get('OLLAMA_URL', 'http://ollama:11434')
+OLLAMA_TIMEOUT        = int(os.environ.get('OLLAMA_TIMEOUT', '300'))  # CPU inference can be slow
+OLLAMA_SCRAPING_MODEL = os.environ.get('OLLAMA_SCRAPING_MODEL', 'gemma3:4b')
+OLLAMA_SCORING_MODEL  = os.environ.get('OLLAMA_SCORING_MODEL',  'gemma3:4b')
+
+# ---------------------------------------------------------------------------
 # LLM Model Configuration
 # ---------------------------------------------------------------------------
 

@@ -28,45 +28,16 @@ internally, so we pass a custom httpx.Client with verify=False to bypass it.
 import json
 import time
 import logging
-import httpx
-from groq import Groq, RateLimitError, APIStatusError
+from openai import RateLimitError, APIStatusError
 from datetime import datetime
 import config
+from llm_provider import chat_complete, is_available
 
 log = logging.getLogger(__name__)
 
-# ---------------------------------------------------------------------------
-# Model selection
-# ---------------------------------------------------------------------------
-# Models are configured in config.py and can be changed without code modifications
-SCORE_MODEL       = config.LLM_SCORING_MODEL      # Model for batch scoring
-SUMMARY_MODEL     = config.LLM_SCORING_MODEL      # Model for preference summarization
-
-# ---------------------------------------------------------------------------
-# Groq client (lazy singleton)
-# ---------------------------------------------------------------------------
-
-_client = None
-
-
-def _get_client() -> Groq:
-    """
-    Return the shared Groq client, creating it on first call.
-
-    Uses a custom httpx transport with SSL verification disabled to work
-    behind the corporate firewall's self-signed certificate.
-    """
-    global _client
-    if _client is None:
-        transport   = httpx.HTTPTransport(verify=False)  # Corporate firewall SSL bypass
-        http_client = httpx.Client(transport=transport, timeout=60)
-        _client     = Groq(api_key=config.GROQ_API_KEY, http_client=http_client)
-    return _client
-
-
-def _api_available() -> bool:
-    """Return True if a real Groq API key is configured."""
-    return bool(config.GROQ_API_KEY and config.GROQ_API_KEY != 'your_groq_api_key_here')
+def _api_available(provider: str = None) -> bool:
+    """Return True if the configured LLM provider is available."""
+    return is_available(provider)
 
 
 # ---------------------------------------------------------------------------
@@ -156,7 +127,7 @@ def score_events(events: list) -> list[tuple]:
 # Batch scoring
 # ---------------------------------------------------------------------------
 
-def run_batch_scoring(session=None, rescore_all: bool = False) -> None:
+def run_batch_scoring(session=None, rescore_all: bool = False, provider: str = None) -> None:
     """
     Score future events in chunked LLM calls and write scores back to the DB.
 
@@ -188,7 +159,7 @@ def run_batch_scoring(session=None, rescore_all: bool = False) -> None:
             print("No taste profile configured — skipping batch scoring")
             return
 
-        if not _api_available():
+        if not _api_available(provider):
             log.warning("Groq API key not configured — skipping batch scoring")
             print("Groq not configured — skipping batch scoring")
             return
@@ -216,7 +187,7 @@ def run_batch_scoring(session=None, rescore_all: bool = False) -> None:
             total_chunks = (len(events) + chunk_size - 1) // chunk_size
 
             try:
-                chunk_scores = _call_batch_score(chunk, taste_prompt, preference_summary)
+                chunk_scores = _call_batch_score(chunk, taste_prompt, preference_summary, provider=provider)
                 all_scores.update(chunk_scores)
 
                 # Write scores to DB immediately — don't wait for all chunks
@@ -244,7 +215,7 @@ def run_batch_scoring(session=None, rescore_all: bool = False) -> None:
             session.close()
 
 
-def _call_batch_score(events: list, taste_prompt: str, preference_summary: str) -> dict[int, float]:
+def _call_batch_score(events: list, taste_prompt: str, preference_summary: str, provider: str = None) -> dict[int, float]:
     """
     Make one Groq API call to score a chunk of events.
 
@@ -303,13 +274,13 @@ def _call_batch_score(events: list, taste_prompt: str, preference_summary: str) 
     )
 
     try:
-        response = _call_with_retry(
-            _get_client().chat.completions.create,
-            model=SCORE_MODEL,
+        raw = _call_with_retry(
+            chat_complete,
             messages=[{'role': 'user', 'content': prompt}],
-            temperature=0.1,  # Low temperature for consistent, deterministic scoring
-        )
-        raw = response.choices[0].message.content.strip()
+            call_type='scoring',
+            temperature=0.1,
+            provider=provider,
+        ).strip()
 
         # Defensively strip markdown code fences if the model ignores our instructions
         if raw.startswith('```'):
@@ -351,7 +322,7 @@ def _call_batch_score(events: list, taste_prompt: str, preference_summary: str) 
 # Preference summary
 # ---------------------------------------------------------------------------
 
-def maybe_update_preference_summary() -> None:
+def maybe_update_preference_summary(provider: str = None) -> None:
     """
     Check if enough new feedback has accumulated to warrant a summary refresh.
 
@@ -365,7 +336,7 @@ def maybe_update_preference_summary() -> None:
     3. feedback_count_at_last_summary is bumped to the current total.
     """
     from database.models import Session, UserProfile, FeedbackHistory, PreferenceProfileHistory
-    if not _api_available():
+    if not _api_available(provider):
         return
 
     session = Session()
@@ -393,6 +364,7 @@ def maybe_update_preference_summary() -> None:
             existing_summary=profile.preference_summary or '',
             taste_prompt=profile.taste_prompt or '',
             new_feedback=new_feedback,
+            provider=provider,
         )
 
         if new_summary:
@@ -423,6 +395,7 @@ def _generate_rolling_summary(
     existing_summary: str,
     taste_prompt: str,
     new_feedback: list,
+    provider: str = None,
 ) -> str | None:
     """
     Merge new feedback into the existing preference summary using Groq.
@@ -482,13 +455,13 @@ def _generate_rolling_summary(
         )
 
     try:
-        response = _call_with_retry(
-            _get_client().chat.completions.create,
-            model=SUMMARY_MODEL,
+        return _call_with_retry(
+            chat_complete,
             messages=[{'role': 'user', 'content': prompt}],
-            temperature=0.4,  # Slightly higher than scoring — allows more nuanced language
-        )
-        return response.choices[0].message.content.strip()
+            call_type='summary',
+            temperature=0.4,
+            provider=provider,
+        ).strip()
     except Exception as e:
         log.error(f"Summary generation failed: {e}")
         print(f"Summary generation failed: {e}")

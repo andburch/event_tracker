@@ -4,3 +4,4 @@ __pycache__/
 events.db
 venv/
 .vscode/
+debug_artifacts/

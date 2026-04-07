@@ -28,42 +28,18 @@ KNOWN LIMITATIONS
   - Pages requiring login or special cookies are not supported.
 """
 
-import re, json, time, httpx, os, shutil, requests, urllib3, logging, threading
+import re, json, time, os, shutil, requests, urllib3, logging, threading
 from datetime import datetime
 from bs4 import BeautifulSoup
-from groq import Groq
+from llm_provider import chat_complete
 import config
 
 # Configure logging
 log = logging.getLogger(__name__)
 
 # ---------------------------------------------------------------------------
-# Groq client (lazy singleton)
+# Schema
 # ---------------------------------------------------------------------------
-# Instantiated on first use rather than at import time so that a missing
-# GROQ_API_KEY doesn't crash every file that imports this module.
-_client = None
-
-
-def _get_client() -> Groq:
-    """Return the shared Groq client, creating it on first call."""
-    global _client
-    if _client is None:
-        transport = httpx.HTTPTransport(verify=False)  # Corporate firewall SSL bypass
-        _client = Groq(
-            api_key=config.GROQ_API_KEY,
-            http_client=httpx.Client(transport=transport, timeout=60),
-        )
-    return _client
-
-# ---------------------------------------------------------------------------
-# Model + schema
-# ---------------------------------------------------------------------------
-# Model is configured in config.py and read dynamically (not cached at import)
-
-def _get_model():
-    """Return the current scraping model from config (allows runtime changes)."""
-    return config.LLM_SCRAPING_MODEL
 
 EVENT_SCHEMA = {'type': 'json_object'}
 
@@ -163,7 +139,8 @@ def _ask_llm_single(
     current_url: str,
     site_hint: str = '',
     is_last_chunk: bool = True,
-    retries: int = None
+    retries: int = None,
+    provider: str = None,
 ) -> dict:
     """
     Single LLM call for one chunk of page text.
@@ -221,13 +198,14 @@ def _ask_llm_single(
 
     for attempt in range(retries):
         try:
-            response = _get_client().chat.completions.create(
-                model=_get_model(),
+            content = chat_complete(
                 messages=[{'role': 'user', 'content': prompt}],
+                call_type='scraping',
                 temperature=0.1,
                 response_format=EVENT_SCHEMA,
+                provider=provider,
             )
-            return json.loads(response.choices[0].message.content)
+            return json.loads(content)
         except Exception as e:
             err = str(e)
             if ('503' in err or '429' in err) and attempt < retries - 1:
@@ -239,7 +217,7 @@ def _ask_llm_single(
                 raise
 
 
-def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = None) -> dict:
+def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = None, provider: str = None) -> dict:
     """
     Extract events from page text, chunking automatically for large pages.
 
@@ -260,7 +238,7 @@ def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = Non
     
     if len(text) <= config.LLM_CHUNK_SIZE:
         return _ask_llm_single(text, current_url, site_hint,
-                               is_last_chunk=True, retries=retries)
+                               is_last_chunk=True, retries=retries, provider=provider)
 
     chunks = list(_chunk_text(text))
     n = len(chunks)
@@ -275,7 +253,7 @@ def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = Non
         if i > 0:
             time.sleep(config.LLM_CHUNK_DELAY)
         result = _ask_llm_single(chunk, current_url, site_hint,
-                                 is_last_chunk=is_last, retries=retries)
+                                 is_last_chunk=is_last, retries=retries, provider=provider)
 
         for ev in result.get('events', []):
             key = (ev.get('title') or '').strip().lower()

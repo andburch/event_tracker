@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.models import (
     Session, Event, FeedbackHistory, UserProfile,
-    PreferenceProfileHistory, ScraperRun,
+    PreferenceProfileHistory, ScraperRun, LLMCall,
 )
 from recommender.llm_filter import score_events, get_profile, maybe_update_preference_summary
 from datetime import datetime, timedelta, date
@@ -253,6 +253,18 @@ def health():
         successful_runs     = len([r for r in recent_runs if r.success])
         overall_success_rate = (successful_runs / total_runs * 100) if total_runs > 0 else 0
 
+        # LLM call timing stats (last 7 days), grouped by provider + call_type
+        llm_rows = session.query(
+            LLMCall.provider,
+            LLMCall.call_type,
+            func.count(LLMCall.id).label('calls'),
+            func.avg(LLMCall.duration_seconds).label('avg_duration'),
+            func.avg(LLMCall.prompt_tokens).label('avg_prompt_tokens'),
+            func.avg(LLMCall.completion_tokens).label('avg_completion_tokens'),
+        ).filter(LLMCall.timestamp >= week_ago).group_by(
+            LLMCall.provider, LLMCall.call_type
+        ).order_by(LLMCall.provider, LLMCall.call_type).all()
+
         return render_template(
             'health.html',
             active_scrapers=active_scrapers,
@@ -265,6 +277,7 @@ def health():
             total_runs=total_runs,
             overall_success_rate=overall_success_rate,
             current_time=datetime.now(),
+            llm_stats=llm_rows,
         )
     finally:
         session.close()

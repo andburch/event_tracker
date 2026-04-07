@@ -110,6 +110,11 @@ USER RUNS: python llm_scraper.py fibber
 │           │   │   │   ├─ Inline links as "Text [/url]"
 │           │   │   │   └─ Returns: clean text
 │           │   │   │
+│           │   │   ├─▶ apply_trim(text, key)
+│           │   │   │   ├─ Looks up TRIM_PATTERNS[key] in sources.py
+│           │   │   │   ├─ Strips nav menus, filter sidebars, cookie banners
+│           │   │   │   └─ Cuts 15-76% of tokens on most sites
+│           │   │   │
 │           │   │   ├─▶ ask_llm(text, url, site_hint)
 │           │   │   │   ├─ Send to Groq API
 │           │   │   │   ├─ Chunk if > 6000 chars
@@ -275,11 +280,12 @@ USER RUNS: python llm_scraper.py fibber
 **Role:** Single source of truth for all scraper configurations
 
 **Contains:**
-- `SITES` dict with all 21+ site configurations
+- `SITES` dict with all 23 site configurations
 - Each entry: (name, url, use_selenium, wait, max_pages, note, color, pagination_config)
+- `TRIM_PATTERNS` dict -- one entry per site, strips nav/filter boilerplate before LLM
 - `SOURCE_NAMES` and `SOURCE_COLORS` derived dicts for UI
 
-**Used by:** llm_scraper.py, server/app.py
+**Used by:** llm_scraper.py, server/app.py, pagination_engine.py
 
 ---
 
@@ -309,6 +315,7 @@ USER RUNS: python llm_scraper.py fibber
 - `fetch_requests()` - Fetch static HTML
 - `fetch_selenium()` - Fetch JavaScript-rendered pages
 - `clean_html()` - Strip HTML to clean text
+- `apply_trim()` - Strip site-specific boilerplate using TRIM_PATTERNS from sources.py
 - `ask_llm()` - Send text to Groq, get structured events
 - `get_driver()` / `close_driver()` - Selenium management
 
@@ -499,9 +506,13 @@ python server/app.py
 
 ### Adding a New Site
 1. Edit `sources.py`
-2. Add entry to `SITES` dict
-3. Choose pagination type
-4. Test: `python llm_scraper.py <key>`
+2. Add entry to `SITES` dict (name, url, selenium, wait, max_pages, note, color, pagination_config)
+3. Collect artifact: `python3 _collect_artifacts.py`
+4. Inspect `debug_artifacts/<key>/page_1_cleaned.txt` to find trim pattern
+5. Add entry to `TRIM_PATTERNS` dict in same file (or `None` if no boilerplate)
+6. Test: `python llm_scraper.py <key>`
+
+See `HOW_TO_ADD_SCRAPERS.md` for full details.
 
 ### Debugging a Scraper
 1. Test individually: `python llm_scraper.py <key>`

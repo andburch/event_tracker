@@ -97,3 +97,42 @@ We use Selenium to click the Next button between pages.
 - **URL copying**: LLM prompted to copy URLs exactly, not paraphrase. Still imperfect with smaller models.
 - **Scroll passes**: Default is 10 for all Selenium fetches. Height-check exits early if no new content loads, so this is safe for all sites.
 - **max_pages**: Bumped to 5 globally (10 for chandler). Acts as a safety cap, not a target.
+
+---
+
+## Boilerplate Trim System
+
+Most sites prepend nav menus, filter sidebars, category dropdowns, or cookie consent walls to their event pages. This text:
+- Wastes LLM tokens (Groq has rate limits)
+- Slows local/CPU-only models by **1.5-2.6x** (tested across gemma3:4b, mistral:7b, phi3:mini, qwen2.5:3b)
+- Can cause smaller models to fail entirely (phi3:mini returned 0 events on the full Chandler page but worked on the trimmed version)
+
+`TRIM_PATTERNS` in `sources.py` defines a cut point per site. `pagination_engine.apply_trim()` applies it after `clean_html()`, before `ask_llm()`.
+
+### How trim patterns were derived
+
+For each of the 23 sites, `_collect_artifacts.py` fetched and cleaned page 1, saving to `debug_artifacts/<key>/page_1_cleaned.txt`. Each artifact was inspected manually to find the last line of boilerplate before the first event entry. Patterns were verified to appear exactly once in the artifact.
+
+### Impact by site
+
+| Site | Chars trimmed | % removed | What was cut |
+|------|-------------|-----------|--------------|
+| chandler | 4,470 | 76% | Filter sidebar + 200+ location options |
+| backcountry_hunters | 4,169 | 75% | US state chapter list + interest filters |
+| dbg | 27,397 | 69% | Entire cookie consent manager (~1000 lines) |
+| downtown_tempe | 4,362 | 48% | Featured-events hero + filter category list |
+| gilbert | 2,627 | 37% | Category dropdown + month navigation |
+| phoenix | 2,610 | 24% | Featured event + browse-by-topic nav |
+| az_mushroom | 6,002 | 15% | Nav menu (shown twice) + login form |
+| asu_kerr | 725 | 16% | Filter accordions (Category/Genre/Cost/Day/Time/Series) |
+| tca | 308 | 9% | CivicPlus calendar header (same pattern as gilbert) |
+
+Sites like `yuccatap`, `odysea`, `hale_theatre` have `None` (no boilerplate or bot-blocked).
+
+### Rules for good patterns
+
+1. **Use 2-3 lines** -- single words like `\nGo\n` or `\nAll\n` are too likely to false-match in future HTML
+2. **Avoid month/category names** -- content that rotates will cause silent misses
+3. **Prefer structural UI text** -- submit buttons, section headings, nav landmark labels
+4. **Verify count=1** before committing
+5. **Check it's page-stable** -- the pattern should appear on page 2 and 3, not just page 1

@@ -98,7 +98,8 @@ def scrape_and_save(
     wait: int,
     max_pages: int,
     pagination_config: dict | None,
-    session
+    session,
+    provider: str = None,
 ) -> tuple[int, int, bool, str | None]:
     """
     Scrape one site via pagination engine and save new events to the database.
@@ -125,7 +126,8 @@ def scrape_and_save(
     try:
         # Delegate all scraping to the pagination engine
         all_events = scrape_with_pagination(
-            key, name, start_url, use_selenium, wait, max_pages, pagination_config
+            key, name, start_url, use_selenium, wait, max_pages, pagination_config,
+            provider=provider,
         )
     except Exception as e:
         success = False
@@ -189,6 +191,15 @@ def main():
     args     = sys.argv[1:]
     no_purge = '--no-purge' in args
     args     = [a for a in args if a != '--no-purge']
+
+    # Optional --provider flag: --provider groq  or  --provider ollama
+    provider = None
+    if '--provider' in args:
+        idx = args.index('--provider')
+        if idx + 1 < len(args):
+            provider = args[idx + 1]
+            args = args[:idx] + args[idx + 2:]
+
     target   = args[0] if args else None
 
     if target == 'list':
@@ -236,7 +247,8 @@ def main():
 
             start_time = time.time()
             found, added, success, error = scrape_and_save(
-                key, name, url, use_sel, wait, max_pages, pagination_config, session
+                key, name, url, use_sel, wait, max_pages, pagination_config, session,
+                provider=provider,
             )
             duration     = time.time() - start_time
             total_found += found

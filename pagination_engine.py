@@ -36,9 +36,20 @@ from llm_scrape_core import (
     fetch_requests, fetch_selenium, close_driver, get_driver,
     clean_html, ask_llm, _SPOOF_UA
 )
+from sources import TRIM_PATTERNS
 import logging
 
 log = logging.getLogger(__name__)
+
+
+def apply_trim(text: str, site_key: str) -> str:
+    """Strip pre-event boilerplate from cleaned HTML text using site-specific patterns."""
+    pattern = TRIM_PATTERNS.get(site_key)
+    if pattern and pattern in text:
+        before = len(text)
+        text = text[text.index(pattern) + len(pattern):]
+        log.debug(f"[{site_key}] trim: {before - len(text):,} chars removed, {len(text):,} remain")
+    return text
 
 
 # ===========================================================================
@@ -293,7 +304,8 @@ def scrape_with_pagination(
     use_selenium: bool,
     wait: int,
     max_pages: int,
-    pagination_config: dict | None
+    pagination_config: dict | None,
+    provider: str = None,
 ) -> list[dict]:
     """
     Main pagination engine entry point.
@@ -341,10 +353,10 @@ def scrape_with_pagination(
                 else:
                     html = fetch_requests(current_url)
                 
-                text = clean_html(html)
+                text = apply_trim(clean_html(html), key)
                 print(f"    text={len(text)} chars", end='  ')
-                
-                result = ask_llm(text, current_url=current_url, site_hint=name)
+
+                result = ask_llm(text, current_url=current_url, site_hint=name, provider=provider)
                 page_events = result.get('events', [])
                 next_url = result.get('next_page_url')
                 all_events.extend(page_events)
@@ -373,10 +385,10 @@ def scrape_with_pagination(
             for url, html, page_num in handler(
                 start_url, use_selenium, wait, max_pages, pagination_config, name
             ):
-                text = clean_html(html)
+                text = apply_trim(clean_html(html), key)
                 print(f"    text={len(text)} chars", end='  ')
-                
-                result = ask_llm(text, current_url=url, site_hint=name)
+
+                result = ask_llm(text, current_url=url, site_hint=name, provider=provider)
                 page_events = result.get('events', [])
                 all_events.extend(page_events)
                 print(f"events={len(page_events)}")

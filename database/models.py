@@ -173,6 +173,31 @@ class ScraperRun(Base):
 
 
 # ---------------------------------------------------------------------------
+# LLMCall
+# ---------------------------------------------------------------------------
+
+class LLMCall(Base):
+    """
+    Per-call timing record for every LLM API call made by the app.
+
+    Used to compare Groq vs Ollama performance on the /health dashboard.
+    Written by llm_provider._log_call() after every successful chat_complete() call.
+
+    call_type: 'scraping', 'scoring', or 'summary'
+    """
+    __tablename__ = 'llm_calls'
+
+    id                = Column(Integer, primary_key=True)
+    timestamp         = Column(DateTime, default=datetime.utcnow, nullable=False)
+    provider          = Column(String(50),  nullable=False)   # 'groq' or 'ollama'
+    model             = Column(String(200), nullable=False)
+    call_type         = Column(String(50),  nullable=False)   # 'scraping', 'scoring', 'summary'
+    prompt_tokens     = Column(Integer, nullable=True)
+    completion_tokens = Column(Integer, nullable=True)
+    duration_seconds  = Column(Float,   nullable=False)
+
+
+# ---------------------------------------------------------------------------
 # Engine + Session factory
 # ---------------------------------------------------------------------------
 

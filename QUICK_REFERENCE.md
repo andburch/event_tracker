@@ -25,7 +25,7 @@ python check_groq_quota.py               # Check API quota
 
 | File | Purpose |
 |------|---------|
-| `sources.py` | **EDIT THIS** to add new scrapers |
+| `sources.py` | **EDIT THIS** to add new scrapers -- contains `SITES` AND `TRIM_PATTERNS` |
 | `pagination_engine.py` | Pagination logic (rarely edit) |
 | `llm_scrape_core.py` | Low-level utilities (rarely edit) |
 | `llm_scraper.py` | Main scraper (rarely edit) |
@@ -33,8 +33,9 @@ python check_groq_quota.py               # Check API quota
 | `ARCHITECTURE.md` | Complete system documentation |
 | `.env` | API keys (create from `.env.example`) |
 | `events.db` | SQLite database (auto-created) |
+| `debug_artifacts/` | Cleaned-text artifacts used for trim pattern research |
 
-## Adding a New Scraper (5 minutes)
+## Adding a New Scraper (10-15 minutes)
 
 1. **Open** `sources.py`
 2. **Add** to `SITES` dict:
@@ -50,7 +51,20 @@ python check_groq_quota.py               # Check API quota
        None,  # Pagination config (see below)
    ),
    ```
-3. **Test**: `python llm_scraper.py mykey`
+3. **Collect artifact and find trim pattern:**
+   ```bash
+   python3 _collect_artifacts.py          # saves debug_artifacts/<key>/page_1_cleaned.txt
+   head -200 debug_artifacts/mykey/page_1_cleaned.txt
+   # Find last line of boilerplate before first event; pick a 2-3 line span
+   python3 -c "print(open('debug_artifacts/mykey/page_1_cleaned.txt').read().count('your pattern'))"
+   # must print 1
+   ```
+4. **Add** to `TRIM_PATTERNS` dict (same file, section below `SITES`):
+   ```python
+   'mykey': "\nLast Filter Item\nAnother Stable Line\n",
+   # or None if page starts directly with events
+   ```
+5. **Test**: `python llm_scraper.py mykey`
 
 ## Pagination Types
 
@@ -77,13 +91,25 @@ python check_groq_quota.py               # Check API quota
 ```
 User runs: python llm_scraper.py fibber
     │
-    ├─▶ Load config from sources.py
+    ├─▶ Load config from sources.py (SITES + TRIM_PATTERNS)
     ├─▶ pagination_engine.scrape_with_pagination()
     │   ├─▶ fetch_selenium() or fetch_requests()
-    │   ├─▶ clean_html()
+    │   ├─▶ clean_html()       -- strips tags, inlines links
+    │   ├─▶ apply_trim()       -- strips site-specific boilerplate
     │   └─▶ ask_llm() → Groq API
     ├─▶ Save events to database
     └─▶ Print summary
+```
+
+## Debug Pipeline
+
+```bash
+python3 debug_fetch.py <key>             # Stage 1: fetch raw HTML
+python3 debug_clean.py <key>             # Stage 2: clean HTML + apply trim
+python3 debug_chunk.py <key>             # Stage 3: visualize chunking
+python3 debug_llm.py <key>               # Stage 4+5: LLM call + parse
+python3 debug_pipeline.py <key>          # Full pipeline, interactive pauses
+python3 _collect_artifacts.py            # Collect page_1_cleaned.txt for all sites
 ```
 
 ## Web Interface Routes

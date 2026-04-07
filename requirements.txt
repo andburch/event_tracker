@@ -11,3 +11,4 @@ feedparser>=6.0.0
 httpx>=0.25.0
 urllib3>=2.0.0
 gunicorn>=21.2.0
+openai>=1.0.0
