@@ -294,8 +294,11 @@ TRIM_PATTERNS = {
     # Yucca Tap Room — page opens directly with events; nothing to trim
     'yuccatap':            None,
 
-    # Raising Arizona Kids — 2-line filter widget label before event listing
-    'rak':                 "Displaying:\nAll\n",
+    # Raising Arizona Kids — filter widget label before events (head trim), then the
+    # huge Category/Age/Neighborhood filter sidebar after the pagination links (tail trim).
+    # The sidebar is ~230 lines / ~3k chars and pushed the "Next >" pagination link into
+    # a non-last chunk, causing the LLM to skip pages 2-7.
+    'rak':                 ("Displaying:\nAll\n", "Calendar\nsearch our Calendar"),
 
     # City of Chandler — 3-line sequence at end of location filter + submit button;
     # more robust than just "\nGo\n" which is a single common word

@@ -43,12 +43,29 @@ log = logging.getLogger(__name__)
 
 
 def apply_trim(text: str, site_key: str) -> str:
-    """Strip pre-event boilerplate from cleaned HTML text using site-specific patterns."""
+    """
+    Strip boilerplate from cleaned HTML text using site-specific patterns.
+
+    TRIM_PATTERNS value can be:
+      - str:         head trim only  — strip everything before (and including) the pattern
+      - (str, str):  head + tail     — also strip everything from the tail pattern to end
+      - None:        no trimming
+    """
     pattern = TRIM_PATTERNS.get(site_key)
-    if pattern and pattern in text:
-        before = len(text)
-        text = text[text.index(pattern) + len(pattern):]
-        log.debug(f"[{site_key}] trim: {before - len(text):,} chars removed, {len(text):,} remain")
+    if not pattern:
+        return text
+
+    head, tail = (pattern, None) if isinstance(pattern, str) else pattern
+
+    before = len(text)
+    if head and head in text:
+        text = text[text.index(head) + len(head):]
+    if tail and tail in text:
+        text = text[:text.index(tail)]
+
+    removed = before - len(text)
+    if removed:
+        log.debug(f"[{site_key}] trim: {removed:,} chars removed, {len(text):,} remain")
     return text
 
 

@@ -20,10 +20,11 @@ from llm_scrape_core import (
     clean_html, ask_llm,
 )
 from sources import SITES
+from pagination_engine import apply_trim
 
 
 def run_test(name, start_url, use_selenium=False, wait=5, max_pages=3,
-             note='', dump=False):
+             note='', dump=False, site_key=''):
     """
     Run the LLM extraction loop for one site and print results.
 
@@ -66,7 +67,7 @@ def run_test(name, start_url, use_selenium=False, wait=5, max_pages=3,
             print(f"    FETCH ERROR: {e}")
             break
 
-        text = clean_html(html)
+        text = apply_trim(clean_html(html), site_key)
         print(f"    text={len(text)} chars", end='  ')
 
         if dump:
@@ -144,7 +145,7 @@ if __name__ == '__main__':
             # SITES tuple: (name, url, use_sel, wait, max_pages, note, color, pagination_cfg)
             entry = SITES[key]
             name, url, use_sel, wait, max_pages, note = entry[:6]
-            run_test(name, url, use_sel, wait, max_pages, note, dump=dump)
+            run_test(name, url, use_sel, wait, max_pages, note, dump=dump, site_key=key)
             if key != keys[-1]:
                 time.sleep(3)
 
