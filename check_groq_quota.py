@@ -1,8 +1,8 @@
 """
 check_groq_quota.py — Show remaining Groq API quota from response headers.
 
-Fires a minimal 1-token request and reads the rate limit headers Groq
-returns on every response:
+Fires a minimal 1-token request per (key, model) and reads the rate limit
+headers Groq returns on every response:
 
   x-ratelimit-remaining-requests  — Requests left today (RPD)
   x-ratelimit-remaining-tokens    — Tokens left this minute (TPM)
@@ -11,88 +11,116 @@ returns on every response:
   x-ratelimit-reset-requests      — Time until daily request limit resets
   x-ratelimit-reset-tokens        — Time until per-minute token limit resets
 
+Checks all configured keys (GROQ_API_KEY + GROQ_API_KEY_2) by default.
+
 Usage:
-    python check_groq_quota.py                    # Check both scraping and scoring models
-    python check_groq_quota.py --model <name>     # Check specific model
+    python check_groq_quota.py                    # Check all keys, all models
+    python check_groq_quota.py --model <name>     # Check specific model on all keys
+    python check_groq_quota.py --key 1            # Check only key 1
+    python check_groq_quota.py --key 2            # Check only key 2
 """
 
 import sys
 import httpx
 import config
 
-def check_quota(model: str):
-    """Check quota for a specific model."""
+def check_quota(label: str, api_key: str, model: str):
+    """Check quota for a specific (key, model) pair."""
+    if not api_key:
+        print(f"  {label}/{model}: not configured")
+        return
+
+    resp = httpx.Client(transport=httpx.HTTPTransport(verify=False)).post(
+        'https://api.groq.com/openai/v1/chat/completions',
+        headers={
+            'Authorization': f'Bearer {api_key}',
+            'Content-Type': 'application/json',
+        },
+        json={
+            'model': model,
+            'messages': [{'role': 'user', 'content': 'hi'}],
+            'max_tokens': 1,
+        },
+        timeout=15,
+    )
+
+    if resp.status_code == 429:
+        status = 'RATE LIMITED (429)'
+    elif resp.status_code != 200:
+        status = f'HTTP {resp.status_code}: {resp.text[:100]}'
+    else:
+        status = 'OK'
+
+    h = resp.headers
+    rows = [
+        ("Requests remaining today",   h.get('x-ratelimit-remaining-requests', 'n/a'),
+                                       h.get('x-ratelimit-limit-requests', 'n/a')),
+        ("Requests reset in",          h.get('x-ratelimit-reset-requests', 'n/a'), ''),
+        ("Tokens remaining (per min)", h.get('x-ratelimit-remaining-tokens', 'n/a'),
+                                       h.get('x-ratelimit-limit-tokens', 'n/a')),
+        ("Tokens reset in",            h.get('x-ratelimit-reset-tokens', 'n/a'), ''),
+    ]
+
+    col_w = 30
+    print(f"  {label} / {model}  [{status}]")
+    for label_col, value, limit in rows:
+        suffix = f"  (limit: {limit})" if limit else ''
+        print(f"    {label_col:<{col_w}} {value}{suffix}")
+    print()
+
+
+def _all_keys() -> list[tuple[str, str]]:
+    """Return list of (label, api_key) for all configured Groq keys."""
+    keys = []
+    if config.GROQ_API_KEY:
+        keys.append(('groq_key_1', config.GROQ_API_KEY))
+    if config.GROQ_API_KEY_2:
+        keys.append(('groq_key_2', config.GROQ_API_KEY_2))
+    return keys
+
+
+if __name__ == '__main__':
     if not config.GROQ_API_KEY:
         print("ERROR: GROQ_API_KEY not set in .env")
         sys.exit(1)
 
-    print(f"Checking quota for: {model}")
+    # Parse flags
+    args = sys.argv[1:]
+    model_filter = None
+    key_filter   = None
 
-    # Use a raw httpx call so we can inspect response headers directly.
-    # The Groq SDK wraps the response and doesn't expose headers easily.
-    transport = httpx.HTTPTransport(verify=False)
-    with httpx.Client(transport=transport) as client:
-        resp = client.post(
-            'https://api.groq.com/openai/v1/chat/completions',
-            headers={
-                'Authorization': f'Bearer {config.GROQ_API_KEY}',
-                'Content-Type': 'application/json',
-            },
-            json={
-                'model': model,
-                'messages': [{'role': 'user', 'content': 'hi'}],
-                'max_tokens': 1,
-            },
-            timeout=15,
-        )
-
-    if resp.status_code == 429:
-        print("  STATUS: Rate limited (429) — you've hit a cap.\n")
-    elif resp.status_code != 200:
-        print(f"  STATUS: HTTP {resp.status_code}")
-        print(f"  {resp.text[:300]}\n")
-        return
-    else:
-        print("  STATUS: OK")
-
-    # Print rate limit headers in a readable table
-    h = resp.headers
-    rows = [
-        ("Requests remaining today",  h.get('x-ratelimit-remaining-requests', 'n/a'),
-                                      h.get('x-ratelimit-limit-requests', 'n/a')),
-        ("Requests reset in",         h.get('x-ratelimit-reset-requests', 'n/a'), ''),
-        ("Tokens remaining (per min)", h.get('x-ratelimit-remaining-tokens', 'n/a'),
-                                       h.get('x-ratelimit-limit-tokens', 'n/a')),
-        ("Tokens reset in",           h.get('x-ratelimit-reset-tokens', 'n/a'), ''),
-    ]
-
-    col_w = 30
-    for label, value, limit in rows:
-        suffix = f"  (limit: {limit})" if limit else ''
-        print(f"    {label:<{col_w}} {value}{suffix}")
-
-    print()
-
-
-if __name__ == '__main__':
-    # Parse optional --model flag
-    if '--model' in sys.argv:
-        idx = sys.argv.index('--model')
-        if idx + 1 < len(sys.argv):
-            model = sys.argv[idx + 1]
-            check_quota(model)
+    if '--model' in args:
+        idx = args.index('--model')
+        if idx + 1 < len(args):
+            model_filter = args[idx + 1]
         else:
             print("ERROR: --model requires a model name")
             sys.exit(1)
-    else:
-        # Check every unique model used by the application
-        print("="*70)
-        print("GROQ API QUOTA CHECK")
-        print("="*70)
-        print()
 
-        seen = set()
-        for model in config.LLM_SCRAPING_MODELS + config.LLM_SCORING_MODELS:
-            if model not in seen:
-                check_quota(model)
-                seen.add(model)
+    if '--key' in args:
+        idx = args.index('--key')
+        if idx + 1 < len(args):
+            key_filter = args[idx + 1]  # '1' or '2'
+        else:
+            print("ERROR: --key requires 1 or 2")
+            sys.exit(1)
+
+    keys   = _all_keys()
+    models = list(dict.fromkeys(config.LLM_SCRAPING_MODELS + config.LLM_SCORING_MODELS))
+
+    if model_filter:
+        models = [model_filter]
+    if key_filter:
+        keys = [(l, k) for l, k in keys if l.endswith(key_filter)]
+        if not keys:
+            print(f"ERROR: groq_key_{key_filter} is not configured")
+            sys.exit(1)
+
+    print("=" * 70)
+    print("GROQ API QUOTA CHECK")
+    print("=" * 70)
+    print()
+
+    for label, api_key in keys:
+        for model in models:
+            check_quota(label, api_key, model)
