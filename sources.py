@@ -194,7 +194,7 @@ SITES = {
     'asu_kerr': (
         'ASU Kerr Cultural Center',
         'https://asukerr.com/events/',
-        True, 5, 5, 'WordPress /page/N/ -- no per-event URLs',
+        True, 5, 5, 'WordPress + The Events Calendar plugin',
         ('#fef3c7', '#d97706', '#78350f'),
         None,  # Default LLM pagination (LLM extracts /page/N/ URLs)
     ),

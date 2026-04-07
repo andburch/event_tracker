@@ -17,8 +17,9 @@ USAGE
 import sys, time
 from llm_scrape_core import (
     fetch_requests, fetch_selenium, close_driver,
-    clean_html, ask_llm, SITES,
+    clean_html, ask_llm,
 )
+from sources import SITES
 
 
 def run_test(name, start_url, use_selenium=False, wait=5, max_pages=3,
@@ -140,7 +141,9 @@ if __name__ == '__main__':
                 sys.exit(1)
 
         for key in keys:
-            name, url, use_sel, wait, max_pages, note, _color = SITES[key]
+            # SITES tuple: (name, url, use_sel, wait, max_pages, note, color, pagination_cfg)
+            entry = SITES[key]
+            name, url, use_sel, wait, max_pages, note = entry[:6]
             run_test(name, url, use_sel, wait, max_pages, note, dump=dump)
             if key != keys[-1]:
                 time.sleep(3)

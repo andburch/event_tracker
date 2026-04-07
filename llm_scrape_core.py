@@ -80,7 +80,13 @@ def clean_html(html: str) -> str:
     """
     soup = BeautifulSoup(html, 'html.parser')
 
-    for tag in soup(['script', 'style', 'nav', 'footer', 'header',
+    # NOTE: <header> is intentionally NOT in this list. Some events plugins
+    # (notably WordPress's "The Events Calendar" / Tribe Events) wrap each
+    # event card's title block in a semantic <header>, so stripping all
+    # <header> tags would also strip every event title and detail link.
+    # Page-level navigation headers are already covered by stripping <nav>,
+    # and per-site TRIM_PATTERNS handles whatever boilerplate remains.
+    for tag in soup(['script', 'style', 'nav', 'footer',
                      'noscript', 'svg', 'img']):
         tag.decompose()
 
