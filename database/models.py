@@ -201,6 +201,31 @@ class LLMCall(Base):
 
 
 # ---------------------------------------------------------------------------
+# GroqRateLimitEvent
+# ---------------------------------------------------------------------------
+
+class GroqRateLimitEvent(Base):
+    """
+    Persisted log of every 429 rate-limit error from Groq.
+
+    Stored so we can diagnose classification correctness after the fact —
+    e.g. verify whether key2 really hit a daily limit or was misclassified.
+
+    classified_as: 'daily' or 'tpm'
+    error_snippet: first 500 chars of the raw error string from Groq
+    """
+    __tablename__ = 'groq_rate_limit_events'
+
+    id              = Column(Integer, primary_key=True)
+    timestamp       = Column(DateTime, default=datetime.utcnow, nullable=False)
+    api_key_label   = Column(String(50),  nullable=False)   # 'groq_key_1', 'groq_key_2'
+    model           = Column(String(200), nullable=False)
+    classified_as   = Column(String(10),  nullable=False)   # 'daily' or 'tpm'
+    retry_after_sec = Column(Integer,     nullable=True)    # parsed retry-after value
+    error_snippet   = Column(Text,        nullable=True)    # raw error text (truncated)
+
+
+# ---------------------------------------------------------------------------
 # GroqModelLimit
 # ---------------------------------------------------------------------------
 

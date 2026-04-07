@@ -112,6 +112,28 @@ class GroqRateLimiter:
             )
             print(f"\n  [rate_limiter] {label}/{model} TPM limit — retry in {retry_after}s")
 
+        self._log_rate_limit_event(label, model, is_daily, retry_after, error_str)
+
+    def _log_rate_limit_event(self, label: str, model: str, is_daily: bool,
+                              retry_after: int, error_str: str) -> None:
+        """Persist this 429 event to the DB so we can audit classifications later."""
+        try:
+            from database.models import Session, GroqRateLimitEvent
+            s = Session()
+            try:
+                s.add(GroqRateLimitEvent(
+                    api_key_label=label,
+                    model=model,
+                    classified_as='daily' if is_daily else 'tpm',
+                    retry_after_sec=retry_after,
+                    error_snippet=error_str[:500],
+                ))
+                s.commit()
+            finally:
+                s.close()
+        except Exception as e:
+            log.warning(f"[rate_limiter] Failed to log rate limit event: {e}")
+
     def pick_key_and_model(self, models: list[str]) -> tuple[str, str, str]:
         """
         Return (label, api_key, model) for the best available combination.

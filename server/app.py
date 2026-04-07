@@ -24,7 +24,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from database.models import (
     Session, Event, FeedbackHistory, UserProfile,
-    PreferenceProfileHistory, ScraperRun, LLMCall, GroqModelLimit,
+    PreferenceProfileHistory, ScraperRun, LLMCall, GroqModelLimit, GroqRateLimitEvent,
 )
 from recommender.llm_filter import score_events, get_profile, maybe_update_preference_summary
 from datetime import datetime, timedelta, date
@@ -629,6 +629,11 @@ def llm_usage():
         ).filter(LLMCall.provider == 'groq'
         ).group_by(LLMCall.model).order_by(func.count(LLMCall.id).desc()).all()
 
+        # --- 429 audit log (most recent 50) ---
+        rate_limit_events = session.query(GroqRateLimitEvent).order_by(
+            GroqRateLimitEvent.id.desc()
+        ).limit(50).all()
+
         return render_template(
             'llm_usage.html',
             budget=budget,
@@ -641,6 +646,7 @@ def llm_usage():
             now=now,
             chart_labels=chart_labels,
             chart_datasets=chart_datasets,
+            rate_limit_events=rate_limit_events,
         )
     finally:
         session.close()

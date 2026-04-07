@@ -285,6 +285,45 @@
         </div>
     </div>
 
+    <!-- 429 audit log -->
+    <div class="section">
+        <h2>Rate Limit Events (last 50 · 429 audit log)</h2>
+        {% if rate_limit_events %}
+        <div class="table-scroll">
+        <table>
+            <thead>
+                <tr>
+                    <th>Time (UTC)</th>
+                    <th>Key</th>
+                    <th>Model</th>
+                    <th>Classified As</th>
+                    <th style="text-align:right">Retry After</th>
+                    <th>Error Snippet</th>
+                </tr>
+            </thead>
+            <tbody>
+                {% for e in rate_limit_events %}
+                <tr>
+                    <td class="ts">{{ e.timestamp.strftime('%m-%d %H:%M:%S') }}</td>
+                    <td class="key">{{ e.api_key_label }}</td>
+                    <td class="model">{{ e.model }}</td>
+                    <td style="font-weight:500; color:{% if e.classified_as == 'daily' %}#dc2626{% else %}#d97706{% endif %}">
+                        {{ e.classified_as }}
+                    </td>
+                    <td class="num">{{ e.retry_after_sec }}s</td>
+                    <td style="font-size:0.75rem; color:#6b7280; max-width:400px; word-break:break-all">
+                        {{ e.error_snippet or '—' }}
+                    </td>
+                </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+        </div>
+        {% else %}
+        <p class="dim" style="padding:0.5rem 0">No rate limit events recorded yet.</p>
+        {% endif %}
+    </div>
+
     <!-- Recent calls -->
     <div class="section">
         <h2>Recent Calls (last 100)</h2>
