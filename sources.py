@@ -22,9 +22,13 @@ pagination_config: Dict defining pagination behavior (see pagination_engine.py f
     - Otherwise: Dict with 'type' key and type-specific config
 
 TRIM_PATTERNS entry format:
-    key: string that marks the END of boilerplate (inclusive).
-         Everything up to and including this string is stripped.
-         None means no trim (page starts directly with events, or site is bot-blocked).
+    key: one of
+         - string:       head trim only  — marks the END of pre-event boilerplate
+                         (inclusive). Everything up to and including this string
+                         is stripped.
+         - (str, str):   (head, tail)    — also strips from the tail marker to end,
+                         useful when a filter sidebar or footer follows the events.
+         - None:         no trim (page starts directly with events).
          See HOW_TO_ADD_SCRAPERS.md for how to find and verify trim patterns.
 """
 
@@ -265,9 +269,14 @@ SITES = {
 # ask_llm().
 #
 # HOW IT WORKS
-# Each value is a string that marks the END of the boilerplate (inclusive).
-# pagination_engine.apply_trim() finds the first occurrence of this string and
-# discards everything up to and including it.
+# Each value is either:
+#   - a string: marks the END of head boilerplate (inclusive). pagination_engine.
+#     apply_trim() finds the first occurrence and discards everything up to and
+#     including it.
+#   - a (head, tail) tuple: head works as above; ALSO strips everything from the
+#     first occurrence of `tail` to the end of the text. Use this when events
+#     are followed by a filter sidebar or footer that inflates chunking.
+#   - None: no trim (page opens directly with events).
 #
 # HOW TO FIND THE RIGHT STRING FOR A NEW SITE
 #  1. Run: python3 _collect_artifacts.py          # saves debug_artifacts/<key>/page_1_cleaned.txt

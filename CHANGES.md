@@ -23,6 +23,78 @@ navigation headers are already handled by stripping `<nav>`, and per-site
 **DB cleanup** — 13 old broken ASU Kerr records (descriptions stored as titles, empty URL)
 deleted manually after re-scrape populated correct records.
 
+### Bug fix: Raising Arizona Kids returning only page 1 of events
+
+**Root cause** — RAK has a huge Category/Age/Neighborhood filter sidebar (~230 lines,
+~3k chars) that renders **after** the event list and its "Next >" pagination link.
+`ask_llm()` only looks for `next_page_url` in the **last chunk** (to avoid the LLM
+hallucinating pagination from unrelated context). With the sidebar padding the page,
+"Next >" got pushed into an earlier chunk and was never seen, so pagination stopped
+at page 1 every time. Used to work before boilerplate trimming was added — the prior
+scraper read the whole page at once.
+
+**Fix** — Extended `TRIM_PATTERNS` to accept a `(head, tail)` tuple. `head` strips
+pre-event boilerplate as before; `tail` strips everything from its marker to the end.
+Updated `pagination_engine.apply_trim()` to handle both forms.
+
+```python
+'rak': ("Displaying:\nAll\n", "Calendar\nsearch our Calendar"),
+```
+
+Also bumped `rak` `max_pages` from 5 → 10.
+
+**Files changed**
+- `pagination_engine.py` — `apply_trim()` now handles str or (str, str) tuple
+- `sources.py` — `rak` gets tuple trim pattern; `max_pages` 5 → 10; docstrings updated
+- `_test_llm_scrape.py` — now calls `apply_trim()` so it matches production behavior
+
+### 429 audit log (`GroqRateLimitEvent` table)
+
+Before: 429 classifications went only to stdout, so after-the-fact "why did key N get
+blocked" questions were unanswerable.
+
+Now: every 429 is persisted to `groq_rate_limit_events` with key label, model,
+classification (`daily` vs `tpm`), `retry_after_sec`, and a 500-char error snippet.
+Surfaced on `/llm-usage` as "Rate Limit Events (last 50 · 429 audit log)".
+
+- `database/models.py` — new `GroqRateLimitEvent` class
+- `groq_rate_limiter.py` — `_log_rate_limit_event()` called from `record_rate_limit()`
+- `server/app.py` — `/llm-usage` query and template context
+- `server/templates/llm_usage.html` — audit log section with colored classification
+
+### `check_groq_quota.py` — multi-key support
+
+Previously only checked `GROQ_API_KEY`. Now iterates over every configured key and
+every model by default. New flags: `--key 1|2`, `--model <name>`.
+
+### Discovery: original two keys were from the same Groq account
+
+Symptom: key2 showed 0 calls on `/llm-usage` but was still getting 429s.
+
+**Diagnosis** — Built a live differential test (`_test_key_sharing.py`, since deleted):
+call Groq's rate-limit header endpoint for both keys, burn 5 requests through key1,
+re-check both. On the original keys, **both** counters dropped by 7 → same account,
+shared quota. "Key rotation" was giving us nothing.
+
+**Fix** — User regenerated both keys from **separate** Groq accounts. Re-ran the
+differential test: key1 dropped 6, key2 only its baseline 1 → confirmed isolated.
+New keys now in `.env` (gitignored, not committed).
+
+### Debug pipeline lesson
+
+User flagged that I was troubleshooting rak/asu_kerr with ad-hoc Python one-liners
+instead of using `debug_fetch.py`, `debug_clean.py`, `debug_chunk.py`, `debug_llm.py`,
+`debug_pipeline.py` — which exist **specifically** for this. Going forward, the
+debug pipeline is the first tool for any scraper/pagination/chunking investigation.
+Start with `python3 debug_chunk.py <key>` and `python3 debug_pipeline.py <key>`.
+
+### Key takeaways for future sessions
+
+- **SITES tuple is 8 elements** now: `(name, url, use_selenium, wait, max_pages, note, color, pagination_config)`. Always use `entry[:6]` slicing or full 8-element unpack; any 7-element unpack is stale.
+- **`TRIM_PATTERNS` values can be str, (str, str), or None.** Tuple form is for sites with boilerplate both before AND after events.
+- **`ask_llm()` only extracts `next_page_url` from the last chunk.** Keep total cleaned text small enough that pagination markers land in the final chunk — this is why tail trims matter.
+- **The debug pipeline tools exist. Use them first.**
+
 ---
 
 ## Session 1 (2026-04-07)

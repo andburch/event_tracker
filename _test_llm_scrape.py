@@ -116,7 +116,8 @@ if __name__ == '__main__':
         print("       python _test_llm_scrape.py all [--dump]")
         print("       python _test_llm_scrape.py list")
         print(f"\nSite keys:")
-        for k, (name, url, use_sel, wait, max_pages, note, _color) in SITES.items():
+        for k, entry in SITES.items():
+            name, url, use_sel, wait, max_pages, note = entry[:6]
             sel = 'selenium' if use_sel else 'requests'
             print(f"  {k:<18} {sel:<10} {url[:60]}")
         sys.exit(0)
@@ -124,7 +125,8 @@ if __name__ == '__main__':
     if target == 'list':
         print(f"{'KEY':<18} {'FETCH':<10} {'PAGES':<7} URL")
         print('-' * 80)
-        for k, (name, url, use_sel, wait, max_pages, note, _color) in SITES.items():
+        for k, entry in SITES.items():
+            name, url, use_sel, wait, max_pages, note = entry[:6]
             sel  = 'selenium' if use_sel else 'requests'
             flag = f'  [{note}]' if note else ''
             print(f"  {k:<16} {sel:<10} max={max_pages}  {url[:55]}{flag}")
