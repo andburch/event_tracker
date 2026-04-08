@@ -392,7 +392,7 @@ def health():
     """
     session = Session()
     try:
-        active_scrapers   = list(SITES.keys())
+        active_scrapers   = sorted(SITES.keys(), key=lambda k: SOURCE_NAMES.get(k, k).lower())
         disabled_scrapers = []
 
         # Event counts per source (total and future)

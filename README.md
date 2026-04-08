@@ -111,8 +111,8 @@ The scraper uses LLM-based extraction to pull events from these sources:
 | OdySea Aquarium | Aquarium | `odysea` |
 | Hale Theatre Arizona | Theatre | `hale_theatre` |
 | Arizona Mushroom Society | Community | `az_mushroom` |
+| AZ Worm Farm | Community / Garden | `az_worm_farm` |
 | Backcountry Hunters & Anglers AZ | Outdoor | `backcountry_hunters` |
-| Arizona Worm Farm | Community / Garden | `az_worm_farm` |
 
 ## Preference Learning
 
