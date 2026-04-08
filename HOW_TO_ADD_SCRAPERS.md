@@ -227,7 +227,7 @@ Clicks a "Next" button in Selenium between pages (no URL change).
 - `'style'` -- checks parent element for `display:none`
 - `'class'` -- checks for a `disabled` CSS class
 
-**Example sites:** `phoenix`, `azmnh`
+**Example sites:** `phoenix`, `azmnh`, `az_worm_farm` (Acuity Scheduling widget — scraped via the direct `app.acuityscheduling.com/schedule.php?owner=…` URL, not the embedding page)
 
 ---
 

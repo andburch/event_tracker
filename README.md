@@ -112,6 +112,7 @@ The scraper uses LLM-based extraction to pull events from these sources:
 | Hale Theatre Arizona | Theatre | `hale_theatre` |
 | Arizona Mushroom Society | Community | `az_mushroom` |
 | Backcountry Hunters & Anglers AZ | Outdoor | `backcountry_hunters` |
+| Arizona Worm Farm | Community / Garden | `az_worm_farm` |
 
 ## Preference Learning
 

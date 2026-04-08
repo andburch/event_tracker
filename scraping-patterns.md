@@ -70,7 +70,9 @@ We use Selenium to click the Next button between pages.
 - Requires a CSS selector for the Next button
 - Stop condition: button has `disabled` attribute or disappears
 
-**Sites:** `phoenix` (selector: `a.cmp-searchCustom__pagination-btn`, second button = Next)
+**Sites:**
+- `phoenix` (selector: `a.cmp-searchCustom__pagination-btn`, second button = Next)
+- `az_worm_farm` (selector: `button.css-mcp49d`, Acuity Scheduling "MORE TIMES" — same `disabled_check='attribute'` pattern as phoenix: 2 buttons top+bottom, handler clicks `btns[1]`, breaks when both pick up the `disabled` attribute)
 
 ---
 
@@ -87,6 +89,7 @@ We use Selenium to click the Next button between pages.
 | gilbert | E | Akamai bot detection. `/-curm-M/-cury-YYYY/`. 5 months = 35 events. |
 | phoenix | F | JS button pagination. `a.cmp-searchCustom__pagination-btn[1]`. 5 pages = 51 events. |
 | mesa | D | `pageindex=N` one-indexed, baked into complex filter URL. 5 pages = 35 events. No times on events. |
+| az_worm_farm | F | **Acuity Scheduling embed.** Landing page `arizonawormfarm.com/classes-1` embeds the widget in a `srcdoc` iframe — unscrapeable. Scrape the real URL `app.acuityscheduling.com/schedule.php?owner=23178578&appointmentType=category:Class` instead (owner ID extracted from the escaped iframe HTML). "MORE TIMES" sliding-window pagination via `button.css-mcp49d[1]`; 2 pages = 17 classes. Obfuscated class hash may drift on Acuity frontend rebuilds — if pagination silently stops, re-grab the selector. |
 
 ---
 

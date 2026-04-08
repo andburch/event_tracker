@@ -247,7 +247,7 @@ SITES = {
     'az_mushroom': (
         'Arizona Mushroom Society',
         'https://www.arizonamushroomsociety.org/coming-events',
-        True, 5, 3, 'Community events',
+        True, 10, 3, 'Community events',
         ('#f0fdf4', '#16a34a', '#14532d'),
         None,  # Default LLM pagination
     ),
@@ -257,6 +257,19 @@ SITES = {
         True, 5, 3, 'Arizona chapter events',
         ('#fef3c7', '#ca8a04', '#713f12'),
         None,  # Default LLM pagination
+    ),
+    'az_worm_farm': (
+        'Arizona Worm Farm',
+        'https://app.acuityscheduling.com/schedule.php?owner=23178578&appointmentType=category:Class',
+        True, 12, 3, 'Acuity Scheduling widget (iframe-extracted from arizonawormfarm.com/classes-1); MORE TIMES sliding-window pagination',
+        ('#f0fdf4', '#15803d', '#14532d'),
+        {
+            'type': 'js_button',
+            'button_selector': 'button.css-mcp49d',
+            'disabled_check': 'attribute',
+            'scroll_before_click': True,
+            'wait_after_click': 4,
+        },
     ),
 }
 
@@ -361,11 +374,16 @@ TRIM_PATTERNS = {
     # Hale Theatre — Selenium timeout; no usable artifact, no trim possible
     'hale_theatre':        None,
 
-    # Arizona Mushroom Society — nav menu (duplicated) + login form before events
-    'az_mushroom':         "\nAMS EVENT CALENDAR\n",
+    # Arizona Mushroom Society — nav menu (duplicated) + login form before events;
+    # tail trim drops the long "Past events" archive (~330 lines of historical events)
+    'az_mushroom':         ("\nAMS EVENT CALENDAR\n", "Past events\n"),
 
     # Backcountry Hunters & Anglers — US state chapter list + interest filters
     'backcountry_hunters': "\n-- Select Location --\n",
+
+    # Arizona Worm Farm (Acuity widget) — 3-line timezone header before first event;
+    # same marker appears on page 2 after an extra "Previous times" line is added above
+    'az_worm_farm':        "\nArizona Time (GMT-07:00)\nMore times\n",
 }
 
 # ---------------------------------------------------------------------------
