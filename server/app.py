@@ -37,16 +37,51 @@ app = Flask(__name__)
 
 
 # ---------------------------------------------------------------------------
-# Google Calendar / ICS export helpers
+# Phoenix timezone helpers
 # ---------------------------------------------------------------------------
 # Phoenix does not observe DST — America/Phoenix is UTC-7 year-round (MST),
-# so we can convert local times to UTC with a fixed +7h offset without any
-# timezone library gymnastics.
+# so we can convert to/from UTC with a fixed 7h offset without pytz or
+# zoneinfo. All metadata timestamps in the database (llm_calls, scraper_runs,
+# feedback_history, preference_profile_history, groq_rate_limit_events, etc.)
+# are stored as naive UTC via datetime.utcnow(); the UI converts them to
+# Phoenix local time for display via the phoenix_time Jinja filter.
+#
+# NOTE: Event.date is a SEPARATE concept — those values are Phoenix local
+# already (scraped verbatim from Phoenix-area websites), so they are NOT
+# run through this conversion. See `index.html` / `calendar.html` where
+# `event.date` is rendered with raw strftime.
 #
 # The sentinel time 12:34 (see CLAUDE.md) means "no specific time given" —
-# treat those events as all-day when exporting.
+# treat those events as all-day when exporting to GCal/ICS.
 
 _PHOENIX_UTC_OFFSET = timedelta(hours=7)
+
+
+def utc_to_phoenix(dt: datetime) -> datetime:
+    """Convert a naive UTC datetime to a naive Phoenix (MST, UTC-7) datetime."""
+    if dt is None:
+        return None
+    return dt - _PHOENIX_UTC_OFFSET
+
+
+def phoenix_now() -> datetime:
+    """Return the current time as a naive Phoenix datetime."""
+    return datetime.utcnow() - _PHOENIX_UTC_OFFSET
+
+
+def phoenix_time_filter(dt: datetime, fmt: str = '%Y-%m-%d %H:%M:%S') -> str:
+    """
+    Jinja filter: convert a UTC datetime to Phoenix time and format it.
+
+    Usage in templates:
+        {{ some_utc_datetime | phoenix_time }}
+        {{ some_utc_datetime | phoenix_time('%m-%d %H:%M') }}
+
+    Returns an empty string for None so templates don't have to guard.
+    """
+    if dt is None:
+        return ''
+    return (dt - _PHOENIX_UTC_OFFSET).strftime(fmt)
 
 
 def _is_all_day(dt: datetime) -> bool:
@@ -193,9 +228,10 @@ def events_to_ics(events, calendar_name: str = 'Phoenix Events') -> str:
     return '\r\n'.join(lines) + '\r\n'
 
 
-# Register the Google Calendar URL builder as a Jinja filter so templates can
-# use `{{ event | gcal_url }}` without extra route-side plumbing.
+# Register Jinja filters so templates can write `{{ event | gcal_url }}` and
+# `{{ ts | phoenix_time('%m-%d %H:%M') }}` without extra route-side plumbing.
 app.jinja_env.filters['gcal_url'] = event_to_gcal_url
+app.jinja_env.filters['phoenix_time'] = phoenix_time_filter
 
 
 # ---------------------------------------------------------------------------
@@ -427,7 +463,7 @@ def health():
             total_future=total_future,
             total_runs=total_runs,
             overall_success_rate=overall_success_rate,
-            current_time=datetime.now(),
+            current_time=phoenix_now(),
         )
     finally:
         session.close()
@@ -761,10 +797,11 @@ def llm_usage():
         budget.sort(key=lambda x: (x['key'], x['model']))
 
         # --- Per-day usage for last 7 days ---
-        # SQLite strftime to group by date
-        from sqlalchemy import cast, Date as SADate
+        # SQLite strftime to group by date. We shift the timestamp by -7h so
+        # buckets align with Phoenix calendar days; otherwise a 9pm Phoenix
+        # call (4am UTC next day) would land in the wrong column.
         daily_rows = session.query(
-            func.strftime('%Y-%m-%d', LLMCall.timestamp).label('day'),
+            func.strftime('%Y-%m-%d', LLMCall.timestamp, '-7 hours').label('day'),
             LLMCall.api_key_label,
             LLMCall.model,
             func.count(LLMCall.id).label('calls'),
@@ -781,12 +818,14 @@ def llm_usage():
         daily_lookup = {(r.day, r.api_key_label, r.model): r for r in daily_rows}
 
         # --- Hourly chart data (last 7 days, per model) ---
-        # Query raw hourly token buckets, then compute a ROLLING 24h window
-        # as a percentage of each model's TPD. This mirrors how the rate
-        # limiter actually sees usage (a rolling window, not a calendar day).
+        # Query hourly token buckets in Phoenix-local hours, then compute a
+        # ROLLING 24h window as a percentage of each model's TPD. This mirrors
+        # how the rate limiter actually sees usage (a rolling window, not a
+        # calendar day). The -7h SQL shift keeps the bucket keys consistent
+        # with the Phoenix-local timeline we build below.
         chart_window_start = now - timedelta(days=8)  # extra day for rolling window warmup
         chart_rows = session.query(
-            func.strftime('%Y-%m-%d %H:00', LLMCall.timestamp).label('hour'),
+            func.strftime('%Y-%m-%d %H:00', LLMCall.timestamp, '-7 hours').label('hour'),
             LLMCall.model,
             func.sum(LLMCall.prompt_tokens + LLMCall.completion_tokens).label('tokens'),
         ).filter(
@@ -794,15 +833,17 @@ def llm_usage():
             LLMCall.provider == 'groq',
         ).group_by('hour', LLMCall.model).order_by('hour').all()
 
-        # Build full hourly timeline (last 7 days)
+        # Build full hourly timeline (last 7 days) in Phoenix local time so
+        # labels and rolling-sum lookups match the -7h SQL buckets above.
+        now_phx = now - _PHOENIX_UTC_OFFSET
         timeline = []
-        cursor = (now - timedelta(days=7)).replace(minute=0, second=0, microsecond=0)
-        end    = now.replace(minute=0, second=0, microsecond=0)
+        cursor = (now_phx - timedelta(days=7)).replace(minute=0, second=0, microsecond=0)
+        end    = now_phx.replace(minute=0, second=0, microsecond=0)
         while cursor <= end:
             timeline.append(cursor)
             cursor += timedelta(hours=1)
 
-        # Bucket raw hourly tokens per model (includes warmup day for rolling sum)
+        # Bucket raw hourly tokens per model (keys are Phoenix-local hours)
         chart_models = sorted({r.model for r in chart_rows})
         hourly_tokens = {m: {} for m in chart_models}
         for r in chart_rows:
@@ -825,7 +866,7 @@ def llm_usage():
                     data.append(None)
             chart_datasets.append({'label': m, 'data': data, 'tpd': tpd})
 
-        # Axis labels: "MM-DD HH"
+        # Axis labels: "MM-DD HH" in Phoenix local time
         chart_labels = [pt.strftime('%m-%d %H') for pt in timeline]
 
         # --- Recent calls ---

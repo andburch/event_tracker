@@ -189,11 +189,11 @@
                 </div>
                 {% if b.free_at %}
                 <div class="reset-line reset-blocked">
-                    Over limit — free at {{ b.free_at.strftime('%m-%d %H:%M UTC') }}
+                    Over limit — free at {{ b.free_at | phoenix_time('%m-%d %H:%M') }} MST
                 </div>
                 {% elif b.next_tick_at %}
                 <div class="reset-line">
-                    Next tick: {{ b.next_tick_at.strftime('%H:%M UTC') }}
+                    Next tick: {{ b.next_tick_at | phoenix_time('%H:%M') }} MST
                     (+{{ '{:,}'.format(b.next_tick_tokens) }} tokens freed)
                 </div>
                 {% endif %}
@@ -293,7 +293,7 @@
         <table>
             <thead>
                 <tr>
-                    <th>Time (UTC)</th>
+                    <th>Time (MST)</th>
                     <th>Key</th>
                     <th>Model</th>
                     <th>Classified As</th>
@@ -304,7 +304,7 @@
             <tbody>
                 {% for e in rate_limit_events %}
                 <tr>
-                    <td class="ts">{{ e.timestamp.strftime('%m-%d %H:%M:%S') }}</td>
+                    <td class="ts">{{ e.timestamp | phoenix_time('%m-%d %H:%M:%S') }}</td>
                     <td class="key">{{ e.api_key_label }}</td>
                     <td class="model">{{ e.model }}</td>
                     <td style="font-weight:500; color:{% if e.classified_as == 'daily' %}#dc2626{% else %}#d97706{% endif %}">
@@ -331,7 +331,7 @@
         <table>
             <thead>
                 <tr>
-                    <th>Time (UTC)</th>
+                    <th>Time (MST)</th>
                     <th>Key</th>
                     <th>Model</th>
                     <th>Type</th>
@@ -344,7 +344,7 @@
             <tbody>
                 {% for r in recent %}
                 <tr>
-                    <td class="ts">{{ r.timestamp.strftime('%m-%d %H:%M:%S') }}</td>
+                    <td class="ts">{{ r.timestamp | phoenix_time('%m-%d %H:%M:%S') }}</td>
                     <td class="key">{{ r.api_key_label }}</td>
                     <td class="model">{{ r.model }}</td>
                     <td class="dim">{{ r.call_type }}</td>

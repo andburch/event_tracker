@@ -295,7 +295,7 @@
                 {% if stats.last_run %}
                 <div class="meta-item">
                     <span class="ml">Last Run</span>
-                    <span class="mv">{{ stats.last_run.strftime('%m/%d %H:%M') }}</span>
+                    <span class="mv">{{ stats.last_run | phoenix_time('%m/%d %H:%M') }}</span>
                 </div>
                 {% endif %}
             </div>
@@ -330,7 +330,7 @@
                 {% if stats.last_run %}
                 <div class="meta-item">
                     <span class="ml">Last Attempt</span>
-                    <span class="mv">{{ stats.last_run.strftime('%m/%d') }}</span>
+                    <span class="mv">{{ stats.last_run | phoenix_time('%m/%d') }}</span>
                 </div>
                 {% endif %}
             </div>
@@ -343,7 +343,7 @@
     {% endif %}
 
 
-    <div class="footer-note">Updated {{ current_time.strftime('%Y-%m-%d %H:%M:%S') }} · Showing last 7 days</div>
+    <div class="footer-note">Updated {{ current_time.strftime('%Y-%m-%d %H:%M:%S') }} MST · Showing last 7 days</div>
 </div>
 </body>
 </html>

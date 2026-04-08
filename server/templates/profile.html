@@ -77,7 +77,7 @@
             </div>
             {% if profile and profile.last_summarized_at %}
             <div class="stat">
-                <div class="stat-value" style="font-size:14px;">{{ profile.last_summarized_at.strftime('%b %d') }}</div>
+                <div class="stat-value" style="font-size:14px;">{{ profile.last_summarized_at | phoenix_time('%b %d') }}</div>
                 <div class="stat-label">Last Summary Update</div>
             </div>
             {% endif %}
@@ -90,7 +90,7 @@
                 <span class="fb-badge">{% if fb.interested %}👍{% else %}👎{% endif %}</span>
                 <div class="fb-body">
                     <div class="fb-title">{{ fb.event_title }}</div>
-                    <div class="fb-meta">{{ fb.event_source }} &nbsp;·&nbsp; {{ fb.created_at.strftime('%b %d, %Y') }}</div>
+                    <div class="fb-meta">{{ fb.event_source }} &nbsp;·&nbsp; {{ fb.created_at | phoenix_time('%b %d, %Y') }}</div>
                 </div>
             </div>
             {% endfor %}
@@ -128,7 +128,7 @@
         {% if profile_history %}
         {% for entry in profile_history %}
         <div class="history-item">
-            <div class="history-date">{{ entry.created_at.strftime('%B %d, %Y at %I:%M %p') }} &nbsp;·&nbsp; {{ entry.feedback_count }} feedbacks at time of update</div>
+            <div class="history-date">{{ entry.created_at | phoenix_time('%B %d, %Y at %I:%M %p') }} &nbsp;·&nbsp; {{ entry.feedback_count }} feedbacks at time of update</div>
             <div class="history-text">{{ entry.preference_summary }}</div>
         </div>
         {% endfor %}
