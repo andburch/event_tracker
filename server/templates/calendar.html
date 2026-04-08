@@ -104,6 +104,8 @@
         .btn-pin { background: #fff8e1; color: #f57f17; border: 1px solid #ffe082 !important; }
         .btn-pin:hover { background: #ffecb3; }
         .btn-pin.pinned { background: #ffe082; color: #e65100; }
+        .btn-gcal { background: #fff; color: #1a73e8; border: 1px solid #dadce0 !important; text-decoration: none; }
+        .btn-gcal:hover { background: #e8f0fe; border-color: #1a73e8 !important; }
         .event-chip.pinned-chip { outline: 2px solid #f9a825; }
 
         /* Day modal list */
@@ -231,6 +233,8 @@
                 <button class="btn-interested" id="modal-interested">👍 Interested</button>
                 <button class="btn-not-interested" id="modal-not-interested">👎 Not Interested</button>
                 <button class="btn-pin" id="modal-pin" onclick="togglePin()">📌 Add to Short List</button>
+                <a class="btn-gcal" id="modal-gcal" href="#" target="_blank" rel="noopener"
+                   style="padding: 9px 20px; border-radius: 4px; font-size: 14px; font-weight: 600; display: inline-block;">📅 Google Calendar</a>
             </div>
         </div>
     </div>
@@ -282,6 +286,7 @@
                 venue: {{ ev.venue | tojson }},
                 desc: {{ (ev.description[:400] if ev.description else '') | tojson }},
                 url: {{ ev.url | tojson }},
+                gcalUrl: {{ (ev | gcal_url) | tojson }},
                 day: {{ day_num }},
                 pinned: {{ 'true' if ev.pinned else 'false' }}
             },
@@ -324,6 +329,7 @@
             document.getElementById('modal-venue').textContent = ev.venue;
             document.getElementById('modal-desc').textContent = ev.desc || 'No description available.';
             document.getElementById('modal-link').href = ev.url;
+            document.getElementById('modal-gcal').href = ev.gcalUrl;
             document.getElementById('modal-interested').onclick = () => sendFeedback(id, true);
             document.getElementById('modal-not-interested').onclick = () => sendFeedback(id, false);
             _updatePinButton(ev.pinned);

@@ -15,7 +15,8 @@ Run with:
 Server starts on http://localhost:5000
 """
 
-from flask import Flask, render_template, request, jsonify, redirect
+from flask import Flask, render_template, request, jsonify, redirect, Response
+from urllib.parse import urlencode
 import sys
 import os
 
@@ -33,6 +34,168 @@ from sqlalchemy import func
 from sources import SITES, SOURCE_NAMES, SOURCE_COLORS
 
 app = Flask(__name__)
+
+
+# ---------------------------------------------------------------------------
+# Google Calendar / ICS export helpers
+# ---------------------------------------------------------------------------
+# Phoenix does not observe DST — America/Phoenix is UTC-7 year-round (MST),
+# so we can convert local times to UTC with a fixed +7h offset without any
+# timezone library gymnastics.
+#
+# The sentinel time 12:34 (see CLAUDE.md) means "no specific time given" —
+# treat those events as all-day when exporting.
+
+_PHOENIX_UTC_OFFSET = timedelta(hours=7)
+
+
+def _is_all_day(dt: datetime) -> bool:
+    """Events with the 12:34 sentinel time are treated as all-day."""
+    return dt.hour == 12 and dt.minute == 34
+
+
+def event_to_gcal_url(event) -> str:
+    """
+    Build a Google Calendar render-template URL that pre-fills a new event.
+
+    Clicking the returned URL opens Google Calendar in a new tab with the
+    title, date/time, description, and location already populated — the user
+    just has to click Save.
+
+    All-day events use the YYYYMMDD date format (end date is exclusive, so
+    we add one day). Timed events default to a 2-hour block because the
+    scraper rarely captures an end time.
+    """
+    start = event.date
+    if _is_all_day(start):
+        start_str = start.strftime('%Y%m%d')
+        end_str = (start + timedelta(days=1)).strftime('%Y%m%d')
+    else:
+        end = start + timedelta(hours=2)
+        start_str = start.strftime('%Y%m%dT%H%M%S')
+        end_str = end.strftime('%Y%m%dT%H%M%S')
+
+    params = {
+        'action': 'TEMPLATE',
+        'text': event.title or 'Event',
+        'dates': f'{start_str}/{end_str}',
+        'ctz': 'America/Phoenix',
+    }
+
+    details_parts = []
+    if event.description:
+        details_parts.append(event.description[:1500])
+    if event.url:
+        if details_parts:
+            details_parts.append('\n\n')
+        details_parts.append(f'Source: {event.url}')
+    if details_parts:
+        params['details'] = ''.join(details_parts)
+
+    if event.venue:
+        params['location'] = event.venue
+
+    return 'https://calendar.google.com/calendar/render?' + urlencode(params)
+
+
+def _ics_escape(s) -> str:
+    """Escape text for insertion into an ICS property value per RFC 5545."""
+    if s is None:
+        return ''
+    return (
+        str(s)
+        .replace('\\', '\\\\')
+        .replace(';', '\\;')
+        .replace(',', '\\,')
+        .replace('\r\n', '\\n')
+        .replace('\n', '\\n')
+        .replace('\r', '\\n')
+    )
+
+
+def _ics_fold(line: str) -> str:
+    """
+    RFC 5545 line folding: lines longer than 75 octets must be split, with
+    continuation lines starting with a single space. Most modern clients
+    tolerate long lines, but folding is cheap and avoids surprises.
+    """
+    if len(line) <= 75:
+        return line
+    chunks = [line[:75]]
+    rest = line[75:]
+    while rest:
+        chunks.append(' ' + rest[:74])
+        rest = rest[74:]
+    return '\r\n'.join(chunks)
+
+
+def events_to_ics(events, calendar_name: str = 'Phoenix Events') -> str:
+    """
+    Build a minimal RFC 5545 ICS calendar containing the given events.
+
+    Timed events are converted from Phoenix local time to UTC via the fixed
+    +7h offset and emitted with the `Z` suffix, so no VTIMEZONE block is
+    required. All-day events use `VALUE=DATE` with an exclusive end date.
+
+    The returned string is ready to be served with
+    `Content-Type: text/calendar`.
+    """
+    now_utc_stamp = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+
+    lines = [
+        'BEGIN:VCALENDAR',
+        'VERSION:2.0',
+        'PRODID:-//Phoenix Events Recommender//EN',
+        'CALSCALE:GREGORIAN',
+        'METHOD:PUBLISH',
+        f'X-WR-CALNAME:{_ics_escape(calendar_name)}',
+    ]
+
+    for ev in events:
+        if _is_all_day(ev.date):
+            dtstart_line = f'DTSTART;VALUE=DATE:{ev.date.strftime("%Y%m%d")}'
+            dtend_line = f'DTEND;VALUE=DATE:{(ev.date + timedelta(days=1)).strftime("%Y%m%d")}'
+        else:
+            start_utc = ev.date + _PHOENIX_UTC_OFFSET
+            end_utc = start_utc + timedelta(hours=2)
+            dtstart_line = f'DTSTART:{start_utc.strftime("%Y%m%dT%H%M%SZ")}'
+            dtend_line = f'DTEND:{end_utc.strftime("%Y%m%dT%H%M%SZ")}'
+
+        # Compose description: event body + source URL footer
+        desc_parts = []
+        if ev.description:
+            desc_parts.append(ev.description[:1500])
+        if ev.url:
+            if desc_parts:
+                desc_parts.append('\n\n')
+            desc_parts.append(f'Source: {ev.url}')
+        description = ''.join(desc_parts)
+
+        event_lines = [
+            'BEGIN:VEVENT',
+            f'UID:phoenix-events-{ev.id}@localhost',
+            f'DTSTAMP:{now_utc_stamp}',
+            dtstart_line,
+            dtend_line,
+            f'SUMMARY:{_ics_escape(ev.title)}',
+        ]
+        if description:
+            event_lines.append(f'DESCRIPTION:{_ics_escape(description)}')
+        if ev.venue:
+            event_lines.append(f'LOCATION:{_ics_escape(ev.venue)}')
+        if ev.url:
+            event_lines.append(f'URL:{ev.url}')
+        event_lines.append('END:VEVENT')
+
+        lines.extend(_ics_fold(l) for l in event_lines)
+
+    lines.append('END:VCALENDAR')
+    return '\r\n'.join(lines) + '\r\n'
+
+
+# Register the Google Calendar URL builder as a Jinja filter so templates can
+# use `{{ event | gcal_url }}` without extra route-side plumbing.
+app.jinja_env.filters['gcal_url'] = event_to_gcal_url
 
 
 # ---------------------------------------------------------------------------
@@ -390,6 +553,56 @@ def profile():
             disliked_count=disliked_count,
             recent_feedback=recent_feedback,
             profile_history=profile_history,
+        )
+    finally:
+        session.close()
+
+
+@app.route('/shortlist.ics')
+def shortlist_ics():
+    """
+    Download all pinned (shortlist) future events as an ICS file.
+
+    Google Calendar has no bulk-import URL, so this is the only way to get
+    every shortlist event into GCal in one step: import this file via
+    Google Calendar → Settings → Import & export → Import.
+    """
+    session = Session()
+    try:
+        pinned = session.query(Event).filter(
+            Event.pinned == True,
+            Event.date >= datetime.now(),
+        ).order_by(Event.date).all()
+
+        body = events_to_ics(pinned, calendar_name='Phoenix Events Shortlist')
+        return Response(
+            body,
+            mimetype='text/calendar',
+            headers={
+                'Content-Disposition': 'attachment; filename="phoenix-events-shortlist.ics"',
+            },
+        )
+    finally:
+        session.close()
+
+
+@app.route('/event/<int:event_id>.ics')
+def event_ics(event_id):
+    """Download a single event as an ICS file."""
+    session = Session()
+    try:
+        event = session.query(Event).get(event_id)
+        if not event:
+            return 'Event not found', 404
+        body = events_to_ics([event], calendar_name=f'Event: {event.title}')
+        # Sanitize filename: keep alphanumerics and dashes only
+        safe_title = ''.join(c if c.isalnum() else '-' for c in (event.title or 'event'))[:50]
+        return Response(
+            body,
+            mimetype='text/calendar',
+            headers={
+                'Content-Disposition': f'attachment; filename="{safe_title}.ics"',
+            },
         )
     finally:
         session.close()

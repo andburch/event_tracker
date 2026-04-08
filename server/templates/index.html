@@ -80,6 +80,27 @@
                          transition: all 0.15s; }
         button.pin-btn:hover { border-color: #f9a825; color: #f9a825; background: #fffde7; }
         button.pin-btn.pinned { background: #fff8e1; border-color: #f9a825; color: #f57f17; }
+
+        /* Google Calendar link (per-event) */
+        .gcal-link { display: inline-flex; align-items: center; gap: 5px; padding: 10px 14px;
+                     text-decoration: none; border-radius: 4px; font-size: 14px; font-weight: 500;
+                     border: 1px solid #dadce0; background: #fff; color: #1a73e8; transition: all 0.15s; }
+        .gcal-link:hover { background: #e8f0fe; border-color: #1a73e8; }
+        .shortlist-event .gcal-link { padding: 5px 10px; font-size: 12px; }
+
+        /* Shortlist export panel */
+        .shortlist-export { margin-top: 14px; padding: 12px 14px; background: #fff8e1;
+                            border: 1px dashed #f9a825; border-radius: 6px;
+                            display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+        .shortlist-export-text { flex: 1; min-width: 200px; font-size: 13px; color: #7a5b00; }
+        .shortlist-export-text strong { color: #5f4400; }
+        .shortlist-export-text a { color: #1a73e8; text-decoration: none; }
+        .shortlist-export-text a:hover { text-decoration: underline; }
+        .shortlist-download-btn { display: inline-flex; align-items: center; gap: 6px;
+                                  padding: 10px 18px; background: #1a73e8; color: white;
+                                  text-decoration: none; border-radius: 4px; font-size: 14px;
+                                  font-weight: 600; white-space: nowrap; }
+        .shortlist-download-btn:hover { background: #1557b0; }
     </style>
 </head>
 <body>
@@ -109,11 +130,25 @@
                     {% if event.price %}<span class="price-badge">{{ event.price }}</span>{% endif %}
                     {% if event.venue %}<span style="font-size:13px;color:#888;">📍 {{ event.venue }}</span>{% endif %}
                     {% if event.url %}<a href="{{ event.url }}" target="_blank" style="font-size:13px;">View →</a>{% endif %}
+                    <a class="gcal-link" href="{{ event | gcal_url }}" target="_blank" rel="noopener"
+                       title="Open Google Calendar with this event pre-filled">📅 Google Calendar</a>
                 </div>
             </div>
             <button class="shortlist-unpin" onclick="togglePin({{ event.id }})">✕ Remove</button>
         </div>
         {% endfor %}
+
+        <!-- Bulk export -->
+        <div class="shortlist-export">
+            <div class="shortlist-export-text">
+                <strong>Bulk import to Google Calendar:</strong> download the .ics file and
+                import it at
+                <a href="https://calendar.google.com/calendar/r/settings/export" target="_blank" rel="noopener">Google
+                Calendar → Settings → Import &amp; export → Import</a>.
+                (Google Calendar has no bulk-URL option, so a one-time .ics import is the only way.)
+            </div>
+            <a class="shortlist-download-btn" href="/shortlist.ics" download>📥 Download .ics ({{ pinned_events|length }})</a>
+        </div>
     </div>
     {% endif %}
 
@@ -183,6 +218,8 @@
                     onclick="togglePin({{ event.id }})">
                 {% if event.pinned %}📌 On Short List{% else %}📌 Add to Short List{% endif %}
             </button>
+            <a class="gcal-link" href="{{ event | gcal_url }}" target="_blank" rel="noopener"
+               title="Open Google Calendar with this event pre-filled">📅 Google Calendar</a>
         </div>
     </div>
     {% endfor %}
