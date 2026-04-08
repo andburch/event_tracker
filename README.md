@@ -57,10 +57,14 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for detailed documentation and flow chart
    python llm_scraper.py list
    ```
 
-4. (Optional) Run batch scoring to rank events by your preferences:
+4. Run batch scoring to rank events by your preferences:
    ```bash
-   python score_events.py
+   python score_events.py            # Score only unscored (NULL) events
+   python score_events.py --all      # Re-score every future event (use after taste profile changes)
    ```
+   **Scoring is NOT automatic.** `llm_scraper.py` does not call it, and changing your
+   taste profile does not trigger it either. You must run `score_events.py` yourself
+   after scraping (for new events) or after editing your taste profile (with `--all`).
    Note: You need to set up your taste profile first (see Preference Learning below).
 
 5. Start the web server:
@@ -113,8 +117,11 @@ The scraper uses LLM-based extraction to pull events from these sources:
 
 1. Go to `/profile` and write a short description of your interests in the "About Me" section
 2. Browse events and click 👍 or 👎 on any event to record feedback
-3. After 10 feedbacks, the AI will automatically generate a preference summary
-4. Run `python score_events.py` to score all events based on your profile
+3. After 10 feedbacks, the AI will automatically update the rolling preference summary
+   (note: this only refreshes the summary text — it does NOT rescore existing events)
+4. Run `python score_events.py --all` whenever you change your taste profile or want
+   existing events re-scored against an updated preference summary. Without `--all`,
+   only events with no score yet (`Event.score IS NULL`) will be scored.
 5. Sort by "Relevance Score" on the main page to see your personalized recommendations
 
 If no Groq key is configured, all events default to a 0.5 score and sorting by date is used instead.
@@ -280,7 +287,9 @@ See [ARCHITECTURE.md](ARCHITECTURE.md) for complete documentation.
 **Scoring not working:**
 - Make sure `GROQ_API_KEY` is set in `.env`
 - Set up your taste profile at `/profile`
-- Run `python score_events.py` after scraping
+- Run `python score_events.py` after scraping — **this is a manual step; nothing
+  triggers scoring automatically.** Use `--all` to re-score existing events after a
+  profile change.
 
 **Database locked errors:**
 - SQLite doesn't handle concurrent writes well

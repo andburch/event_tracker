@@ -42,10 +42,14 @@ python llm_scraper.py list         # show all available sites
 python llm_scraper.py --no-purge   # append without purging DB
 ```
 
-### Run Batch Scoring
+### Run Batch Scoring (manual — not auto-triggered by scraping)
 ```bash
-python score_events.py
+python score_events.py           # Score only events with score IS NULL
+python score_events.py --all     # Re-score every future event (use after profile edits)
 ```
+Scoring shares the same multi-key Groq rate limiter path as scraping via
+`llm_provider.call_llm()`, so it will switch keys/models on 429 and fall back to
+Ollama if all Groq combinations are exhausted.
 
 ### Start Web Server
 ```bash

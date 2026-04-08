@@ -240,17 +240,24 @@ USER RUNS: python llm_scraper.py fibber
    └─▶ Event saved to database
        └─ Table: Event (title, date, venue, url, source, description)
 
-2. SCORING (batch process)
+2. SCORING (MANUAL batch process — NOT auto-triggered by scraping)
    │
-   ├─▶ python score_events.py
+   ├─▶ python score_events.py          # score only events where Event.score IS NULL
+   ├─▶ python score_events.py --all    # re-score every future event (after profile change)
    │
-   ├─▶ For each event without a score:
+   │   NOTE: llm_scraper.py does NOT call this. Changing the taste profile does NOT
+   │         call this. Feedback does NOT call this. You run it yourself.
+   │
+   ├─▶ Uses the same llm_provider.call_llm() path as scraping, so it benefits from
+   │   the multi-key Groq rate limiter, 429 classification, and Ollama fallback.
+   │
+   ├─▶ For each chunked batch of events:
    │   │
-   │   ├─ Load user preferences from UserProfile
-   │   ├─ Send event + preferences to LLM
-   │   └─ LLM returns relevance score (0.0 - 1.0)
+   │   ├─ Load user preferences from UserProfile (taste_prompt + preference_summary)
+   │   ├─ Send chunk + profile to LLM via call_llm(call_type='scoring')
+   │   └─ LLM returns per-event relevance scores (0.0 - 1.0)
    │
-   └─▶ Event.score updated in database
+   └─▶ Event.score updated in database (committed after each chunk)
 
 3. USER INTERACTION (web interface)
    │
@@ -357,14 +364,21 @@ python llm_scraper.py --no-purge   # Append without deleting
 **Role:** LLM-based event scoring and preference learning
 
 **Contains:**
-- `score_events()` - Batch score all unscored events
-- `generate_preference_summary()` - Analyze feedback, update preferences
-- Groq API integration for scoring
+- `run_batch_scoring(rescore_all=False)` - Score events in chunks via Groq; default
+  fills only NULL scores, `rescore_all=True` re-scores every future event
+- `score_events()` - Read-only helper that returns (event, cached_score) tuples for the web UI
+- `maybe_update_preference_summary()` - Rebuild rolling preference summary from recent feedback
+- Groq calls go through `llm_provider.call_llm()`, so they share the same multi-key
+  rate limiter as scraping
 
 **Usage:**
 ```bash
-python score_events.py  # Run after scraping
+python score_events.py          # Score only unscored events — manual step, not automatic
+python score_events.py --all    # Re-score every future event (use after profile edits)
 ```
+
+**Important:** Nothing in the scrape pipeline calls this. Scoring is always a
+separate manual step.
 
 ---
 

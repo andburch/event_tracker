@@ -7,7 +7,7 @@
 - `pagination_engine.py` — configuration-driven pagination handlers
 - `llm_scrape_core.py` — fetch + LLM extraction logic (no site-specific code)
 - `llm_scraper.py` — production entry point (DB persistence, CLI)
-- `score_events.py` — run LLM batch scoring separately after scraping
+- `score_events.py` — **manual** LLM batch scoring; not auto-triggered by scraping. Supports `--all` to re-score existing events after a profile change.
 - `_test_llm_scrape.py` — test harness for individual sites
 
 **To add a new source:** Add ONE entry to `sources.py` SITES dict. See `HOW_TO_ADD_SCRAPERS.md`.

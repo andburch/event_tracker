@@ -66,6 +66,7 @@ Set to `None` if the page opens directly with events (no boilerplate).
 | All scraper config in `sources.py` | Avoids custom scraper code sprawl -- both `SITES` and `TRIM_PATTERNS` live here |
 | Groq + LLM model names | Set in `config.py`; don't hardcode model names elsewhere |
 | `TRIM_PATTERNS` in `sources.py` not a separate file | Keeps all per-site config in one place; easier to review when adding a site |
+| **Scoring is manual, not auto-triggered** | `llm_scraper.py` does NOT call `run_batch_scoring()`, and editing the taste profile does NOT rescore events. You must run `python score_events.py` (or `score_events.py --all` after a profile change) yourself. This keeps the scrape path and the scoring path independent so rate-limit/quota issues in one don't cascade into the other. Both paths share the multi-key Groq rate limiter via `llm_provider.call_llm()`. |
 
 ---
 
@@ -73,6 +74,8 @@ Set to `None` if the page opens directly with events (no boilerplate).
 
 ```bash
 python llm_scraper.py <key>              # Scrape one site
+python score_events.py                   # Score unscored events (manual, not automatic)
+python score_events.py --all             # Re-score all future events (after profile edits)
 python _test_llm_scrape.py <key>         # Test without DB writes
 python _test_llm_scrape.py <key> --dump  # See raw HTML the LLM receives
 python check_groq_quota.py               # Check Groq rate limit status

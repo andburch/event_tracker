@@ -9,8 +9,9 @@ python llm_scraper.py fibber mesa        # Scrape specific sites
 python llm_scraper.py list               # List all available sites
 python llm_scraper.py --no-purge         # Append without deleting existing events
 
-# Scoring
-python score_events.py                   # Score all unscored events
+# Scoring  (MANUAL — NOT auto-triggered by scraping or profile changes)
+python score_events.py                   # Score only events where score IS NULL
+python score_events.py --all             # Re-score every future event (after profile change)
 
 # Web Interface
 python server/app.py                     # Start web server (http://localhost:5000)
