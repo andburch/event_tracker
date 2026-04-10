@@ -93,6 +93,7 @@
         .badge.warning  { background: #fef3c7; color: #92400e; }
         .badge.error    { background: #fee2e2; color: #991b1b; }
         .badge.disabled { background: #f3f4f6; color: #6b7280; }
+        .badge.month-warn { background: #e0e7ff; color: #3730a3; font-size: 10px; }
 
         /* Yield comparison — last scrape and average stacked vertically */
         .yield-block {
@@ -255,7 +256,12 @@
         <div class="scraper-card {{ status }}">
             <div class="card-header">
                 <div class="scraper-name">{{ source_names.get(scraper, scraper.replace('_',' ').title()) }}</div>
-                <span class="badge {{ status }}">{{ label }}</span>
+                <div>
+                    {% if month_spread.get(scraper, 0) == 1 and events.future > 0 %}
+                    <span class="badge month-warn">1 Month Only</span>
+                    {% endif %}
+                    <span class="badge {{ status }}">{{ label }}</span>
+                </div>
             </div>
 
             <div class="yield-block">

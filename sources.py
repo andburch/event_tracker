@@ -99,9 +99,15 @@ SITES = {
     'scottsdale': (
         'City of Scottsdale',
         'https://community.scottsdaleaz.gov/scottsdaleaz_main/calendar',
-        True, 8, 5, '',
+        True, 8, 3, 'Localist FullCalendar, JS month nav',
         ('#fee2e2', '#dc2626', '#7f1d1d'),
-        None,  # Default LLM pagination
+        {   # Localist FullCalendar ignores URL params; must click the JS
+            # month-forward button.  DOM accumulates (~250K chars by page 3).
+            'type': 'js_button',
+            'button_selector': 'button.fc-next-button',
+            'disabled_check': 'simple',
+            'wait_after_click': 5,
+        },
     ),
     'gilbert': (
         'City of Gilbert',

@@ -408,6 +408,14 @@ def health():
             for row in event_counts
         }
 
+        # Distinct month count per source (future events only) — flags scrapers
+        # whose pagination may not be reaching far enough into the future.
+        month_spread_rows = session.query(
+            Event.source,
+            func.count(func.distinct(func.strftime('%Y-%m', Event.date))).label('months'),
+        ).filter(Event.date >= datetime.now()).group_by(Event.source).all()
+        month_spread = {row.source: row.months for row in month_spread_rows}
+
         # Scraper run records from the last 7 days
         week_ago    = datetime.utcnow() - timedelta(days=7)
         recent_runs = session.query(ScraperRun).filter(
@@ -432,7 +440,8 @@ def health():
                     'last_events_added': last_run.events_added,
                     'last_duration':     last_run.duration_seconds,
                     'last_error':        last_run.error_message,
-                    'avg_events':        sum(r.events_found for r in runs) / len(runs),
+                    'avg_events':        (sum(r.events_found for r in runs if r.events_found > 0) /
+                                          max(len([r for r in runs if r.events_found > 0]), 1)),
                     'avg_duration':      sum(r.duration_seconds for r in runs) / len(runs),
                 }
             else:
@@ -459,6 +468,7 @@ def health():
             event_stats=event_stats,
             scraper_stats=scraper_stats,
             source_names=SOURCE_NAMES,
+            month_spread=month_spread,
             total_events=total_events,
             total_future=total_future,
             total_runs=total_runs,

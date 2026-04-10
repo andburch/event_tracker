@@ -135,15 +135,31 @@ def scrape_and_save(
         print(f"  ERROR: {e}")
         all_events = []
 
-    # Save to database
+    # Save to database, tracking skip reasons for run summary
     events_added = 0
+    skipped_past = 0
+    skipped_no_title = 0
+    skipped_duplicate = 0
+    missing_url = 0
+    missing_time = 0
+    missing_venue = 0
+    month_counts = {}
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
-    
+
     for ev in all_events:
         event_dt = parse_date(ev.get('date'), ev.get('time'))
         title = (ev.get('title') or '').strip()
         if not title:
+            skipped_no_title += 1
             continue
+
+        # Track data quality
+        if not (ev.get('url') or '').strip():
+            missing_url += 1
+        if not ev.get('time'):
+            missing_time += 1
+        if not (ev.get('venue') or '').strip():
+            missing_venue += 1
 
         # Handle date range events: if start is past but end is future, use today
         end_date_str = ev.get('end_date')
@@ -159,10 +175,17 @@ def scrape_and_save(
 
         # Skip past events (before today), unless it's an ongoing event
         if event_dt < today and not is_ongoing:
+            skipped_past += 1
             continue
 
+        # Month distribution (for future/current events only)
+        month_key = event_dt.strftime('%Y-%m')
+        month_counts[month_key] = month_counts.get(month_key, 0) + 1
+
         existing = session.query(Event).filter_by(title=title, date=event_dt).first()
-        if not existing:
+        if existing:
+            skipped_duplicate += 1
+        else:
             url = (ev.get('url') or '').strip()
             if url and not url.startswith('http'):
                 from urllib.parse import urljoin
@@ -180,6 +203,34 @@ def scrape_and_save(
             events_added += 1
 
     session.commit()
+
+    # Append DB-side stats to the run summary artifact
+    try:
+        import json, os, artifact_store
+        summary_file = os.path.join(artifact_store.ARTIFACT_ROOT, key, 'run_summary.json')
+        if os.path.exists(summary_file):
+            with open(summary_file) as f:
+                summary = json.load(f)
+        else:
+            summary = {}
+        summary['run_timestamp'] = datetime.now().isoformat()
+        summary['events_added'] = events_added
+        summary['skipped'] = {
+            'past': skipped_past,
+            'duplicate': skipped_duplicate,
+            'no_title': skipped_no_title,
+        }
+        summary['month_distribution'] = dict(sorted(month_counts.items()))
+        summary['data_quality'] = {
+            'missing_url': missing_url,
+            'missing_time': missing_time,
+            'missing_venue': missing_venue,
+        }
+        artifact_store.save(key, 'run_summary.json', json.dumps(summary, indent=2))
+    except Exception as e:
+        import logging
+        logging.getLogger(__name__).warning(f"Run summary update failed: {e}")
+
     return len(all_events), events_added, success, error_message
 
 
@@ -228,9 +279,13 @@ def main():
 
     try:
         if not no_purge and (not target or target == 'all'):
-            count = session.query(Event).delete()
+            pinned_count = session.query(Event).filter(Event.pinned == True).count()
+            count = session.query(Event).filter(Event.pinned != True).delete()
             session.commit()
-            print(f"Purged {count} existing events from database.\n")
+            msg = f"Purged {count} existing events from database."
+            if pinned_count:
+                msg += f" ({pinned_count} pinned events preserved)"
+            print(f"{msg}\n")
         elif no_purge:
             print("--no-purge: appending to existing events.\n")
 

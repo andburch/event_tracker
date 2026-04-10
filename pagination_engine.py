@@ -340,79 +340,136 @@ def scrape_with_pagination(
         List of event dictionaries extracted from all pages
     """
     all_events = []
-    
+    page_stats = []  # per-page: {page, url, events, text_chars, duration}
+
     # Default to LLM pagination if no config provided
     if not pagination_config:
         pagination_config = {'type': 'llm'}
-    
+
     pagination_type = pagination_config.get('type', 'llm')
-    
+
     print(f"  Pagination type: {pagination_type}")
-    
+
+    # Clear stale artifacts from prior runs, then save each stage as we go.
+    # Disk errors are swallowed — artifact failures must not break scrapes.
+    try:
+        import artifact_store
+        artifact_store.prepare_source_dir(key)
+    except OSError as e:
+        log.warning(f"Artifact dir prep failed: {e}")
+
     # Special handling for LLM pagination (loop-based, not generator)
     if pagination_type == 'llm':
         current_url = start_url
         visited = set()
         page_num = 0
-        
+
         while current_url and page_num < max_pages:
             page_num += 1
             if current_url in visited:
                 print(f"    Loop detected, stopping")
                 break
             visited.add(current_url)
-            
+
             print(f"  Page {page_num}: {current_url[:80]}")
-            
+            page_t0 = time.time()
+
             try:
                 if use_selenium:
                     html = fetch_selenium(current_url, wait, scroll_passes=10)
                 else:
                     html = fetch_requests(current_url)
-                
+
                 text = apply_trim(clean_html(html), key)
                 print(f"    text={len(text)} chars", end='  ')
 
-                result = ask_llm(text, current_url=current_url, site_hint=name, provider=provider)
+                try:
+                    artifact_store.save(key, f'page_{page_num}_raw.html', html)
+                    artifact_store.save(key, f'page_{page_num}_cleaned.txt', text)
+                except OSError as e:
+                    log.warning(f"Artifact write failed: {e}")
+
+                result = ask_llm(text, current_url=current_url, site_hint=name,
+                                 provider=provider,
+                                 artifact_prefix=f'{key}/page_{page_num}')
                 page_events = result.get('events', [])
                 next_url = result.get('next_page_url')
                 all_events.extend(page_events)
                 print(f"events={len(page_events)}  next={next_url or 'null'}")
-                
+
+                page_stats.append({
+                    'page': page_num, 'url': current_url,
+                    'events': len(page_events), 'text_chars': len(text),
+                    'duration': round(time.time() - page_t0, 1),
+                })
+
                 if next_url and not next_url.startswith('http'):
                     break
                 current_url = next_url
                 if current_url:
                     time.sleep(2)
-                    
+
             except Exception as e:
                 print(f"\n    ERROR on page {page_num}: {e}")
                 if page_num == 1:
                     raise
                 break
-    
+
     else:
         # Use handler from registry
         handler = _HANDLERS.get(pagination_type)
         if not handler:
             raise ValueError(f"Unknown pagination type: {pagination_type}")
-        
-        # Generator pattern: handler yields (url, html, page_num) tuples
+
+        # Generator pattern: handler yields (url, html, page_num) tuples.
+        # Use enumerate for artifact filenames because some handlers yield
+        # 0-indexed page_num (url_param, js_button) while others yield 1-indexed.
         try:
-            for url, html, page_num in handler(
+            for artifact_page, (url, html, page_num) in enumerate(handler(
                 start_url, use_selenium, wait, max_pages, pagination_config, name
-            ):
+            ), start=1):
+                page_t0 = time.time()
                 text = apply_trim(clean_html(html), key)
                 print(f"    text={len(text)} chars", end='  ')
 
-                result = ask_llm(text, current_url=url, site_hint=name, provider=provider)
+                try:
+                    artifact_store.save(key, f'page_{artifact_page}_raw.html', html)
+                    artifact_store.save(key, f'page_{artifact_page}_cleaned.txt', text)
+                except OSError as e:
+                    log.warning(f"Artifact write failed: {e}")
+
+                result = ask_llm(text, current_url=url, site_hint=name,
+                                 provider=provider,
+                                 artifact_prefix=f'{key}/page_{artifact_page}')
                 page_events = result.get('events', [])
                 all_events.extend(page_events)
                 print(f"events={len(page_events)}")
-                
+
+                page_stats.append({
+                    'page': artifact_page, 'url': url,
+                    'events': len(page_events), 'text_chars': len(text),
+                    'duration': round(time.time() - page_t0, 1),
+                })
+
         except Exception as e:
             print(f"\n    ERROR during pagination: {e}")
             if not all_events:
                 raise
-    
+
+    # Write scrape-side summary (DB-side stats appended by scrape_and_save)
+    try:
+        import json as _json
+        scrape_summary = {
+            'source': key,
+            'name': name,
+            'pagination_type': pagination_type,
+            'fetch_mode': 'selenium' if use_selenium else 'requests',
+            'pages_scraped': len(page_stats),
+            'events_from_llm': len(all_events),
+            'per_page': page_stats,
+        }
+        artifact_store.save(key, 'run_summary.json', _json.dumps(scrape_summary, indent=2))
+    except Exception as e:
+        log.warning(f"Run summary write failed: {e}")
+
     return all_events

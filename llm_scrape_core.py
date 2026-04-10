@@ -148,6 +148,8 @@ def _ask_llm_single(
     is_last_chunk: bool = True,
     retries: int = None,
     provider: str = None,
+    artifact_prefix: str = None,
+    chunk_num: int = 1,
 ) -> dict:
     """
     Single LLM call for one chunk of page text.
@@ -212,7 +214,18 @@ def _ask_llm_single(
                 response_format=EVENT_SCHEMA,
                 provider=provider,
             )
-            return json.loads(content)
+            parsed = json.loads(content)
+            # Save artifacts on success (must not break the scrape under any circumstance)
+            if artifact_prefix:
+                try:
+                    import artifact_store
+                    key, fname_base = artifact_prefix.rsplit('/', 1)
+                    artifact_store.save(key, f'{fname_base}_chunk_{chunk_num}.txt', text)
+                    artifact_store.save(key, f'{fname_base}_chunk_{chunk_num}_prompt.txt', prompt)
+                    artifact_store.save(key, f'{fname_base}_chunk_{chunk_num}_response.json', content)
+                except Exception as e:
+                    log.warning(f"Artifact write failed: {e}")
+            return parsed
         except openai.RateLimitError:
             # Rate limiting is handled inside call_llm() (key switching + waiting).
             # If we get here, all keys are exhausted and no fallback succeeded.
@@ -228,7 +241,7 @@ def _ask_llm_single(
                 raise
 
 
-def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = None, provider: str = None) -> dict:
+def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = None, provider: str = None, artifact_prefix: str = None) -> dict:
     """
     Extract events from page text, chunking automatically for large pages.
 
@@ -249,7 +262,8 @@ def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = Non
     
     if len(text) <= config.LLM_CHUNK_SIZE:
         return _ask_llm_single(text, current_url, site_hint,
-                               is_last_chunk=True, retries=retries, provider=provider)
+                               is_last_chunk=True, retries=retries, provider=provider,
+                               artifact_prefix=artifact_prefix, chunk_num=1)
 
     chunks = list(_chunk_text(text))
     n = len(chunks)
@@ -264,7 +278,8 @@ def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = Non
         if i > 0:
             time.sleep(config.LLM_CHUNK_DELAY)
         result = _ask_llm_single(chunk, current_url, site_hint,
-                                 is_last_chunk=is_last, retries=retries, provider=provider)
+                                 is_last_chunk=is_last, retries=retries, provider=provider,
+                                 artifact_prefix=artifact_prefix, chunk_num=i + 1)
 
         for ev in result.get('events', []):
             key = (ev.get('title') or '').strip().lower()
