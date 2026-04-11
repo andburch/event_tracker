@@ -206,22 +206,22 @@ class LLMCall(Base):
 
 class GroqRateLimitEvent(Base):
     """
-    Persisted log of every 429 rate-limit error from Groq.
+    Persisted log of LLM errors: 429 rate-limits and non-429 failures.
 
     Stored so we can diagnose classification correctness after the fact —
     e.g. verify whether key2 really hit a daily limit or was misclassified.
 
-    classified_as: 'daily' or 'tpm'
-    error_snippet: first 500 chars of the raw error string from Groq
+    classified_as: 'daily', 'tpm' (429s), or 'error_400', 'error_503', 'error' (non-429s)
+    error_snippet: first 500 chars of the raw error string
     """
     __tablename__ = 'groq_rate_limit_events'
 
     id              = Column(Integer, primary_key=True)
     timestamp       = Column(DateTime, default=datetime.utcnow, nullable=False)
-    api_key_label   = Column(String(50),  nullable=False)   # 'groq_key_1', 'groq_key_2'
+    api_key_label   = Column(String(50),  nullable=False)   # 'groq_key_1', 'groq_key_2', 'ollama'
     model           = Column(String(200), nullable=False)
-    classified_as   = Column(String(10),  nullable=False)   # 'daily' or 'tpm'
-    retry_after_sec = Column(Integer,     nullable=True)    # parsed retry-after value
+    classified_as   = Column(String(20),  nullable=False)   # 'daily', 'tpm', 'error_400', 'error_503', 'error'
+    retry_after_sec = Column(Integer,     nullable=True)    # parsed retry-after value (429s only)
     error_snippet   = Column(Text,        nullable=True)    # raw error text (truncated)
 
 

@@ -176,6 +176,9 @@ def _call_llm_groq(messages, call_type, temperature, response_format) -> str:
                     return _call_llm_ollama(messages, call_type, temperature, response_format)
                 raise
             # Loop: pick_key_and_model() will choose a different combo or sleep
+        except Exception as e:
+            log_llm_error(model, label, e)
+            raise
 
 
 def _call_llm_ollama(messages, call_type, temperature, response_format) -> str:
@@ -189,7 +192,11 @@ def _call_llm_ollama(messages, call_type, temperature, response_format) -> str:
         kwargs['response_format'] = response_format
 
     start = time.time()
-    response = client.chat.completions.create(**kwargs)
+    try:
+        response = client.chat.completions.create(**kwargs)
+    except Exception as e:
+        log_llm_error(model, 'ollama', e)
+        raise
     duration = time.time() - start
 
     usage = response.usage
@@ -233,3 +240,32 @@ def _log_call(provider, model, call_type, prompt_tokens, completion_tokens,
         log.warning(f"Failed to log LLM call: {e}")
     finally:
         session.close()
+
+
+def log_llm_error(model: str, api_key_label: str, error: Exception):
+    """Log a non-429 LLM error to the DB so it appears on /llm-usage."""
+    try:
+        from database.models import Session, GroqRateLimitEvent
+        err_str = str(error)
+        # Classify by HTTP status code if present
+        if '400' in err_str:
+            classified = 'error_400'
+        elif '503' in err_str:
+            classified = 'error_503'
+        elif '413' in err_str:
+            classified = 'error_413'
+        else:
+            classified = 'error'
+        s = Session()
+        try:
+            s.add(GroqRateLimitEvent(
+                api_key_label=api_key_label,
+                model=model,
+                classified_as=classified,
+                error_snippet=err_str[:500],
+            ))
+            s.commit()
+        finally:
+            s.close()
+    except Exception as e:
+        log.warning(f"Failed to log LLM error: {e}")
