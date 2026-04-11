@@ -277,6 +277,85 @@ SITES = {
         ('#fef3c7', '#ca8a04', '#713f12'),
         None,  # Default LLM pagination
     ),
+
+    # --- Bookstores ---
+    'changing_hands': (
+        'Changing Hands Bookstore',
+        'https://www.changinghands.com/upcoming-events',
+        True, 15, 5, 'Drupal CMS, numbered page pagination',
+        ('#fce4ec', '#c62828', '#4e0000'),
+        {
+            'type': 'url_param',
+            'param_name': 'page',
+            'start_index': 1,
+        },
+    ),
+
+    # --- Farms / gardens ---
+    'farm_south_mtn': (
+        'The Farm at South Mountain',
+        'https://thefarmatsouthmountain.com/event/list/',
+        True, 5, 3, 'WordPress + The Events Calendar plugin',
+        ('#e8f5e9', '#2e7d32', '#1b5e20'),
+        None,  # Default LLM pagination
+    ),
+    'summerwinds': (
+        'SummerWinds Nursery',
+        'https://www.summerwindsnursery.com/az/events/',
+        True, 5, 1, 'All events on single page, no pagination',
+        ('#f1f8e9', '#558b2f', '#33691e'),
+        None,  # Single page
+    ),
+
+    # --- Music venues ---
+    'valley_bar': (
+        'Valley Bar',
+        'https://www.valleybarphx.com/calendar/',
+        True, 8, 1, 'TicketWeb JS calendar, all events in var all_events JSON',
+        ('#e3f2fd', '#1565c0', '#0d47a1'),
+        None,  # Single page, JS-rendered
+    ),
+
+    # --- Beer bars ---
+    'sleepy_whale': (
+        'The Sleepy Whale',
+        'https://www.thesleepywhale.com/events',
+        True, 10, 1, 'Squarespace; tap takeovers, tastings, community events in downtown Chandler',
+        ('#e1f5fe', '#0277bd', '#01579b'),
+        None,  # Single page
+    ),
+
+    # --- Cooking schools ---
+    'sweet_basil': (
+        'Sweet Basil Cooking School',
+        'https://sweetbasilgourmet.com/april-class-schedule-2/',
+        True, 8, 3, 'WordPress Modern Events Calendar; per-month pages linked in nav',
+        ('#fff3e0', '#e65100', '#bf360c'),
+        None,  # LLM pagination follows month links in nav
+    ),
+
+    # --- Astronomy clubs ---
+    'evac': (
+        'East Valley Astronomy Club',
+        'https://www.evaconline.org/events-meetings',
+        True, 12, 1, 'Wix JS; star parties, meetings, observatory nights',
+        ('#e8eaf6', '#283593', '#1a237e'),
+        None,  # Single page
+    ),
+
+    # --- Clubs / organizations ---
+    'az_flycasters': (
+        'Arizona Flycasters',
+        'https://azflycasters.clubexpress.com/content.aspx?page_id=4001&club_id=989798',
+        True, 5, 3, 'ClubExpress calendar grid, month navigation',
+        ('#e0f7fa', '#00838f', '#004d40'),
+        {
+            'type': 'js_button',
+            'button_selector': 'a[title="Go to the next month"]',
+            'disabled_check': 'simple',
+            'wait_after_click': 3,
+        },
+    ),
 }
 
 # ---------------------------------------------------------------------------
@@ -390,6 +469,31 @@ TRIM_PATTERNS = {
 
     # Backcountry Hunters & Anglers — US state chapter list + interest filters
     'backcountry_hunters': "\n-- Select Location --\n",
+
+    # Changing Hands Bookstore — Drupal; 403 blocks headless Chrome currently
+    'changing_hands':      None,
+
+    # The Farm at South Mountain — WordPress Events Calendar search/view nav
+    'farm_south_mtn':      "\nSelect date.\n",
+
+    # SummerWinds Nursery — intro paragraph + location filter tabs
+    'summerwinds':         "\nOnline\n(0)\n",
+
+    # Valley Bar — TicketWeb calendar header + GDPR cookie consent footer (~2.5K)
+    'valley_bar':          ("\nSun\nMon\nTue\nWed\nThu\nFri\nSat\n",
+                            "\nPrivacy & Cookies Policy\n"),
+
+    # The Sleepy Whale — weekly specials header before event listings
+    'sleepy_whale':        "\nEVENTS\n",
+
+    # Sweet Basil Cooking School — category/instructor filter + calendar mode toggle
+    'sweet_basil':         "\nTag\nReset\nMonthly\nList\n",
+
+    # East Valley Astronomy Club — Wix JS; general info before event details
+    'evac':                None,  # Content is mostly event descriptions, minimal boilerplate
+
+    # Arizona Flycasters — ClubExpress search/filter panel + day-of-week header
+    'az_flycasters':       "\nSunday\nMonday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\n"
 }
 
 # ---------------------------------------------------------------------------
