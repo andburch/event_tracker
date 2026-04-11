@@ -19,8 +19,10 @@ python server/app.py                     # Start web server (http://localhost:50
 # Testing
 python _test_llm_scrape.py <site>        # Test individual scraper
 python _test_llm_scrape.py <site> --dump # Test with HTML dump
-python check_groq_quota.py               # Check API quota
+python check_groq_quota.py               # Check per-minute tokens & daily requests (NOT daily tokens)
 ```
+
+> **Quota caveat:** `check_groq_quota.py` only shows per-minute token (TPM) and daily request (RPD) limits from Groq's API headers. Groq does **not** expose daily token (TPD) usage in headers. The `/llm-usage` dashboard computes rolling 24h token usage from the DB and is the authoritative source for daily token budget status.
 
 ## File Locations
 
@@ -84,7 +86,7 @@ python check_groq_quota.py               # Check API quota
 | "Access Denied" / 403 | Increase `wait` to 10-15 seconds |
 | No events found | Check if `use_selenium` should be `True` |
 | Pagination not working | Try different pagination type |
-| API quota exceeded | Wait or upgrade Groq plan |
+| API quota exceeded | Check `/llm-usage` dashboard for daily token status; `check_groq_quota.py` does NOT show daily tokens |
 | Scraper fails | Check `/health` dashboard for details |
 
 ## Architecture Flow
@@ -190,7 +192,7 @@ Result: ✅ Found 25 events, added 7 new ones in 47s
 - [ ] Backup `events.db` before major changes
 - [ ] Test scrapers after adding new ones
 - [ ] Monitor `/health` dashboard for failures
-- [ ] Check Groq API quota: `python check_groq_quota.py`
+- [ ] Check daily token budget on `/llm-usage` dashboard (not `check_groq_quota.py` — that only shows per-minute limits)
 - [ ] Update documentation when adding features
 - [ ] Commit changes to git regularly
 
@@ -207,7 +209,7 @@ python _test_llm_scrape.py mysite --dump
 python server/app.py
 # Visit http://localhost:5000/health
 
-# Check API quota
+# Check per-minute quota (daily tokens are on /llm-usage dashboard)
 python check_groq_quota.py
 
 # Check database

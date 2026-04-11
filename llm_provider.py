@@ -183,7 +183,8 @@ def _call_llm_ollama(messages, call_type, temperature, response_format) -> str:
     model = _OLLAMA_MODELS[call_type]()
     client = _get_ollama_client()
 
-    kwargs = dict(model=model, messages=messages, temperature=temperature)
+    kwargs = dict(model=model, messages=messages, temperature=temperature,
+                  max_tokens=config.OLLAMA_MAX_TOKENS)
     if response_format:
         kwargs['response_format'] = response_format
 

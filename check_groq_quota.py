@@ -1,13 +1,20 @@
 """
 check_groq_quota.py — Show remaining Groq API quota from response headers.
 
+WARNING: This script only shows per-minute token (TPM) and daily request (RPD)
+limits from Groq's response headers. Groq does NOT expose daily token (TPD)
+usage in its API headers. To check daily token usage — which is the limit you
+will actually hit during bulk scraping — use the LLM Usage dashboard at
+/llm-usage, which computes a rolling 24h token window from the llm_calls DB
+table. If the dashboard says "Over limit", trust it over this script.
+
 Fires a minimal 1-token request per (key, model) and reads the rate limit
 headers Groq returns on every response:
 
   x-ratelimit-remaining-requests  — Requests left today (RPD)
-  x-ratelimit-remaining-tokens    — Tokens left this minute (TPM)
+  x-ratelimit-remaining-tokens    — Tokens left this MINUTE (TPM) — NOT daily
   x-ratelimit-limit-requests      — Your daily request cap
-  x-ratelimit-limit-tokens        — Your per-minute token cap
+  x-ratelimit-limit-tokens        — Your per-minute token cap (NOT daily)
   x-ratelimit-reset-requests      — Time until daily request limit resets
   x-ratelimit-reset-tokens        — Time until per-minute token limit resets
 
@@ -119,6 +126,10 @@ if __name__ == '__main__':
     print("=" * 70)
     print("GROQ API QUOTA CHECK")
     print("=" * 70)
+    print()
+    print("  NOTE: This shows per-minute tokens (TPM) and daily requests (RPD).")
+    print("  Groq does NOT expose daily token (TPD) usage in API headers.")
+    print("  For daily token budget status, check the /llm-usage dashboard.")
     print()
 
     for label, api_key in keys:

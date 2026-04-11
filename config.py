@@ -67,6 +67,7 @@ OLLAMA_URL            = os.environ.get('OLLAMA_URL', 'http://ollama:11434')
 OLLAMA_TIMEOUT        = int(os.environ.get('OLLAMA_TIMEOUT', '300'))  # CPU inference can be slow
 OLLAMA_SCRAPING_MODEL = os.environ.get('OLLAMA_SCRAPING_MODEL', 'gemma3:4b')
 OLLAMA_SCORING_MODEL  = os.environ.get('OLLAMA_SCORING_MODEL',  'gemma3:4b')
+OLLAMA_MAX_TOKENS     = int(os.environ.get('OLLAMA_MAX_TOKENS', '16384'))  # Ollama default num_predict is ~2048, too small for event JSON
 
 # ---------------------------------------------------------------------------
 # LLM Model Configuration
@@ -82,6 +83,7 @@ LLM_SCRAPING_MODELS = ['llama-3.3-70b-versatile', 'moonshotai/kimi-k2-instruct']
 
 # Ordered list of models to use for event scoring/recommendation.
 LLM_SCORING_MODELS = ['llama-3.3-70b-versatile']
+
 
 # ---------------------------------------------------------------------------
 # LLM Scraping Configuration

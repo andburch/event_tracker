@@ -496,7 +496,8 @@ python server/app.py
 ### API Usage
 - Groq API: ~1-3 calls per page (with chunking)
 - Rate limits: Handled with retry + backoff
-- Quota monitoring: `python check_groq_quota.py`
+- Daily token (TPD) monitoring: `/llm-usage` dashboard (rolling 24h from DB -- authoritative)
+- Per-minute token (TPM) / daily request (RPD) check: `python check_groq_quota.py` (does NOT show daily tokens)
 
 ## Security Considerations
 

@@ -277,9 +277,16 @@ def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = Non
     for i, (chunk, is_last) in enumerate(chunks):
         if i > 0:
             time.sleep(config.LLM_CHUNK_DELAY)
-        result = _ask_llm_single(chunk, current_url, site_hint,
-                                 is_last_chunk=is_last, retries=retries, provider=provider,
-                                 artifact_prefix=artifact_prefix, chunk_num=i + 1)
+        try:
+            result = _ask_llm_single(chunk, current_url, site_hint,
+                                     is_last_chunk=is_last, retries=retries, provider=provider,
+                                     artifact_prefix=artifact_prefix, chunk_num=i + 1)
+        except Exception as e:
+            # Don't let one failed chunk kill the entire page — log and continue.
+            # Common cause: "max completion tokens reached" on kimi/small models.
+            log.warning(f"Chunk {i+1}/{n} failed: {e}")
+            print(f"\n    chunk {i+1}/{n} failed (continuing): {str(e)[:80]}")
+            continue
 
         for ev in result.get('events', []):
             key = (ev.get('title') or '').strip().lower()
