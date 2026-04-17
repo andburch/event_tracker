@@ -328,19 +328,23 @@ SITES = {
     # --- Cooking schools ---
     'sweet_basil': (
         'Sweet Basil Cooking School',
-        'https://sweetbasilgourmet.com/april-class-schedule-2/',
-        True, 8, 3, 'WordPress Modern Events Calendar; per-month pages linked in nav',
+        'https://sweetbasilgourmet.com/{month_name}-class-schedule-2/',
+        True, 8, 3, 'WordPress; separate page per month, named by month',
         ('#fff3e0', '#e65100', '#bf360c'),
-        None,  # LLM pagination follows month links in nav
+        {
+            'type': 'multi_month',
+            'months': 3,
+            'url_template': 'https://sweetbasilgourmet.com/{month_name}-class-schedule-2/',
+        },
     ),
 
     # --- Astronomy clubs ---
     'evac': (
         'East Valley Astronomy Club',
-        'https://www.evaconline.org/events-meetings',
-        True, 12, 1, 'Wix JS; star parties, meetings, observatory nights',
+        'https://calendar.google.com/calendar/embed?wkst=1&ctz=America%2FPhoenix&mode=AGENDA&showTitle=0&showNav=0&showDate=0&showPrint=0&showTabs=0&showCalendars=0&showTz=0&src=evaccalendar1%40gmail.com&color=%23039BE5',
+        True, 10, 1, 'Google Calendar embed (AGENDA mode) behind Wix iframe; star parties, meetings',
         ('#e8eaf6', '#283593', '#1a237e'),
-        None,  # Single page
+        None,  # Single page, agenda lists all upcoming events
     ),
 
     # --- Clubs / organizations ---
@@ -503,3 +507,4 @@ TRIM_PATTERNS = {
 
 SOURCE_NAMES = {key: entry[0] for key, entry in SITES.items()}
 SOURCE_COLORS = {key: entry[6] for key, entry in SITES.items()}
+SOURCE_URLS = {key: entry[1].split('{')[0] for key, entry in SITES.items()}

@@ -81,19 +81,26 @@ def _paginate_multi_month(
     config: dict,
     site_name: str
 ):
-    """Multi-month pagination: Generate URLs for N consecutive months."""
+    """Multi-month pagination: Generate URLs for N consecutive months.
+
+    url_template supports {month}, {year}, and {month_name} (lowercase).
+    """
     months = config.get('months', 3)
     url_template = config.get('url_template')
-    
+
     if not url_template:
         raise ValueError(f"multi_month pagination requires 'url_template' in config")
-    
+
     print(f"  Multi-month scraping: {months} months")
-    
+
+    import calendar as _cal
     base_date = datetime.now()
     for i in range(months):
         month_date = base_date + timedelta(days=30 * i)
-        url = url_template.format(month=month_date.month, year=month_date.year)
+        url = url_template.format(
+            month=month_date.month, year=month_date.year,
+            month_name=_cal.month_name[month_date.month].lower(),
+        )
         
         print(f"  Month {i+1}: {url}")
         

@@ -112,6 +112,7 @@
             <a href="/profile">Preferences</a>
             <a href="/health">Scraper Health</a>
             <a href="/llm-usage">LLM Usage</a>
+            <a href="#" id="score-btn" onclick="triggerScoring(event)" style="background:#e8f5e9;color:#2e7d32;">Score Events</a>
         </nav>
     </div>
 
@@ -129,7 +130,7 @@
                     <span class="source">{{ source_names.get(event.source, event.source.replace('_', ' ').title()) }}</span>
                     {% if event.price %}<span class="price-badge">{{ event.price }}</span>{% endif %}
                     {% if event.venue %}<span style="font-size:13px;color:#888;">📍 {{ event.venue }}</span>{% endif %}
-                    {% if event.url %}<a href="{{ event.url }}" target="_blank" style="font-size:13px;">View →</a>{% endif %}
+                    <a href="{{ event.url or source_urls.get(event.source, '') }}" target="_blank" style="font-size:13px;">View →</a>
                     <a class="gcal-link" href="{{ event | gcal_url }}" target="_blank" rel="noopener"
                        title="Open Google Calendar with this event pre-filled">📅 Google Calendar</a>
                 </div>
@@ -209,7 +210,7 @@
         <p>{{ event.description[:300] }}{% if event.description|length > 300 %}...{% endif %}</p>
         <p><strong>Where:</strong> {{ event.venue }}</p>
         <p><strong>Category:</strong> {{ event.category }}</p>
-        <a href="{{ event.url }}" target="_blank">View Details →</a>
+        <a href="{{ event.url or source_urls.get(event.source, '') }}" target="_blank">View Details →</a>
         <div class="buttons">
             <button class="interested" onclick="sendFeedback({{ event.id }}, true)">👍 Interested</button>
             <button class="not-interested" onclick="sendFeedback({{ event.id }}, false)">👎 Not Interested</button>
@@ -236,6 +237,28 @@
         }
         function clearSources() {
             document.querySelectorAll('.source-checkboxes input[type="checkbox"]').forEach(cb => cb.checked = false);
+        }
+        function triggerScoring(e) {
+            e.preventDefault();
+            const btn = document.getElementById('score-btn');
+            btn.textContent = 'Scoring...';
+            btn.style.opacity = '0.6';
+            btn.style.pointerEvents = 'none';
+            fetch('/score', { method: 'POST' })
+                .then(r => r.json())
+                .then(() => {
+                    btn.textContent = 'Scoring Started';
+                    setTimeout(() => {
+                        btn.textContent = 'Score Events';
+                        btn.style.opacity = '1';
+                        btn.style.pointerEvents = 'auto';
+                    }, 5000);
+                })
+                .catch(() => {
+                    btn.textContent = 'Score Events';
+                    btn.style.opacity = '1';
+                    btn.style.pointerEvents = 'auto';
+                });
         }
         function sendFeedback(eventId, interested) {
             fetch('/feedback', {

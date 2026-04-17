@@ -31,7 +31,7 @@ from recommender.llm_filter import score_events, get_profile, maybe_update_prefe
 from datetime import datetime, timedelta, date
 import calendar
 from sqlalchemy import func
-from sources import SITES, SOURCE_NAMES, SOURCE_COLORS
+from sources import SITES, SOURCE_NAMES, SOURCE_COLORS, SOURCE_URLS
 
 app = Flask(__name__)
 
@@ -304,6 +304,7 @@ def index():
             pinned_events=pinned_events,
             sources=sources,
             source_names=SOURCE_NAMES,
+            source_urls=SOURCE_URLS,
             selected_sources=selected_sources,
             start_date=start_date,
             end_date=end_date,
@@ -416,19 +417,20 @@ def health():
         ).filter(Event.date >= datetime.now()).group_by(Event.source).all()
         month_spread = {row.source: row.months for row in month_spread_rows}
 
-        # Scraper run records from the last 7 days
-        week_ago    = datetime.utcnow() - timedelta(days=7)
-        recent_runs = session.query(ScraperRun).filter(
-            ScraperRun.run_timestamp >= week_ago
-        ).order_by(ScraperRun.run_timestamp.desc()).all()
+        # All scraper runs, sorted newest first — no time cutoff so the
+        # "last scrape" column always shows the most recent run even if
+        # it was more than a week ago.
+        all_runs = session.query(ScraperRun).order_by(
+            ScraperRun.run_timestamp.desc()
+        ).all()
 
-        # Compute per-scraper stats dict
+        # Compute per-scraper stats dict (all runs, not just recent)
         scraper_stats = {}
         for source in active_scrapers + disabled_scrapers:
-            runs = [r for r in recent_runs if r.source == source]
+            runs = [r for r in all_runs if r.source == source]
             if runs:
-                successful_runs = [r for r in runs if r.success]
                 last_run        = runs[0]  # Most recent (already sorted desc)
+                successful_runs = [r for r in runs if r.success]
 
                 scraper_stats[source] = {
                     'total_runs':        len(runs),
@@ -457,8 +459,8 @@ def health():
         # Aggregate totals for the summary banner
         total_events        = sum(stats['total']  for stats in event_stats.values())
         total_future        = sum(stats['future'] for stats in event_stats.values())
-        total_runs          = len(recent_runs)
-        successful_runs     = len([r for r in recent_runs if r.success])
+        total_runs          = len(all_runs)
+        successful_runs     = len([r for r in all_runs if r.success])
         overall_success_rate = (successful_runs / total_runs * 100) if total_runs > 0 else 0
 
         return render_template(
@@ -543,6 +545,7 @@ def calendar_view():
             events_by_day=events_by_day,
             sources=sources,
             source_names=SOURCE_NAMES,
+            source_urls=SOURCE_URLS,
             source_colors=SOURCE_COLORS,
             selected_sources=selected_sources,
             prev_year=prev_year, prev_month=prev_month,
@@ -680,6 +683,17 @@ def pin():
         return jsonify({'status': 'success', 'pinned': pinned})
     finally:
         session.close()
+
+
+@app.route('/score', methods=['POST'])
+def trigger_scoring():
+    """Kick off batch scoring of unscored events in a background process."""
+    import subprocess
+    subprocess.Popen(
+        [sys.executable, 'score_events.py'],
+        cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+    )
+    return jsonify({'status': 'started'})
 
 
 @app.route('/profile/summary', methods=['POST'])
@@ -917,4 +931,4 @@ def llm_usage():
 
 
 if __name__ == '__main__':
-    app.run(host='0.0.0.0', debug=os.environ.get('FLASK_DEBUG', 'false').lower() == 'true', port=5000)
+    app.run(host='0.0.0.0', debug=os.environ.get('FLASK_DEBUG', 'true').lower() == 'true', port=5000)

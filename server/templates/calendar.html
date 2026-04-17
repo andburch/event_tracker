@@ -282,10 +282,10 @@
                 title: {{ ev.title | tojson }},
                 date: {{ ev.date.strftime('%b %d, %Y at %I:%M %p') | tojson }},
                 sourceKey: {{ ev.source | tojson }},
-                source: {{ source_names.get(ev.source, ev.source) | tojson }},
+                source: {{ source_names.get(ev.source, ev.source.replace('_', ' ').title()) | tojson }},
                 venue: {{ ev.venue | tojson }},
                 desc: {{ (ev.description[:400] if ev.description else '') | tojson }},
-                url: {{ ev.url | tojson }},
+                url: {{ (ev.url or source_urls.get(ev.source, '')) | tojson }},
                 gcalUrl: {{ (ev | gcal_url) | tojson }},
                 day: {{ day_num }},
                 pinned: {{ 'true' if ev.pinned else 'false' }}
