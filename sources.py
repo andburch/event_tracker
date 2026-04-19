@@ -34,8 +34,13 @@ TRIM_PATTERNS entry format:
 
 from datetime import datetime, timedelta
 
-_today  = datetime.now().strftime('%Y-%m-%d')
-_plus90 = (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
+
+def _today():
+    return datetime.now().strftime('%Y-%m-%d')
+
+
+def _plus90():
+    return (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
 
 # ---------------------------------------------------------------------------
 # Site registry
@@ -149,8 +154,8 @@ SITES = {
     # --- Libraries ---
     'chandler_lib': (
         'Chandler Public Library',
-        f'https://chandler.bibliocommons.com/v2/events?start={_today}&end={_plus90}',
-        True, 5, 3, 'BiblioCommons - date range URL, &page=N pagination',
+        'https://chandler.bibliocommons.com/v2/events?start={today}&end={plus90}',
+        True, 5, 10, 'BiblioCommons - date range URL, &page=N pagination',
         ('#dcfce7', '#16a34a', '#14532d'),
         {
             'type': 'url_param',
@@ -160,7 +165,7 @@ SITES = {
     ),
     'tempe_lib': (
         'Tempe Public Library',
-        f'https://tempepubliclibrary.libnet.info/events?start={_today}&end={_plus90}',
+        'https://tempepubliclibrary.libnet.info/events?start={today}&end={plus90}',
         True, 8, 5, 'date-range URL required',
         ('#d1fae5', '#059669', '#064e3b'),
         None,  # Default LLM pagination

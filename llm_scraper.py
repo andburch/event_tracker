@@ -294,6 +294,9 @@ def main():
 
         for key in keys:
             name, url, use_sel, wait, max_pages, note, _color, pagination_config = SITES[key]
+            # Resolve dynamic date placeholders (e.g. {today}, {plus90})
+            from sources import _today, _plus90
+            url = url.format(today=_today(), plus90=_plus90())
             print(f"\n{'='*60}")
             print(f"SCRAPING: {name}")
             if note:
