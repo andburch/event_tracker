@@ -1,5 +1,5 @@
 """
-debug_clean.py -- Stage 2: Clean HTML and inspect the result.
+debug/clean.py -- Stage 2: Clean HTML and inspect the result.
 
 Shows exactly what clean_html() strips and what survives, including tag removal
 counts, whether a <main> root was found, JS placeholder detection, and the full
@@ -7,19 +7,19 @@ cleaned text.
 
 USAGE
 -----
-    python debug_clean.py <key>                                    # fetch + clean live
-    python debug_clean.py <key> --page 2                          # fetch page 2
-    python debug_clean.py --file /tmp/debug/source/page_1_raw.html  # from saved artifact
-    python debug_clean.py --file page.html --source <key>         # --source for artifact naming
-    python debug_clean.py list                                     # list all site keys
+    python debug/clean.py <key>                                    # fetch + clean live
+    python debug/clean.py <key> --page 2                          # fetch page 2
+    python debug/clean.py --file /tmp/debug/source/page_1_raw.html  # from saved artifact
+    python debug/clean.py --file page.html --source <key>         # --source for artifact naming
+    python debug/clean.py list                                     # list all site keys
 
 Saves: /tmp/debug/{source}/page_N_cleaned.txt
 """
 
 import sys, os, time, argparse
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import debug_utils as u
+from debug import utils as u
 
 
 def clean_and_inspect(html: str) -> tuple[str, dict]:
@@ -38,7 +38,7 @@ def clean_and_inspect(html: str) -> tuple[str, dict]:
         tag_counts[tag_name] = len(soup.find_all(tag_name))
 
     # Run standard clean_html()
-    from llm_scrape_core import clean_html
+    from scrape.core import clean_html
     cleaned = clean_html(html)
 
     # Determine content root (re-parse to check)
@@ -68,7 +68,7 @@ def run(key: str | None, source_label: str, html_file: str | None,
         entry = u.get_source(key)
         name, start_url, use_selenium, wait, max_pages, note, _color, _pag = entry
         print(f'  Source: live  {start_url}')
-        from llm_scrape_core import fetch_requests, fetch_selenium, close_driver
+        from scrape.core import fetch_requests, fetch_selenium, close_driver
         t0 = time.time()
         try:
             if use_selenium:
@@ -126,9 +126,9 @@ def run(key: str | None, source_label: str, html_file: str | None,
         path = u.save_artifact(source_label, filename, cleaned)
         u.step('SAVED', 'OK', path)
         print(f'\n  Next step:')
-        print(f'    python debug_chunk.py --file {path}')
+        print(f'    python debug/chunk.py --file {path}')
         if key:
-            print(f'    python debug_chunk.py --file {path} --source {key}')
+            print(f'    python debug/chunk.py --file {path} --source {key}')
 
 
 def main():

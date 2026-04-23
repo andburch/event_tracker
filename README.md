@@ -15,8 +15,8 @@ A personal event aggregator for the Phoenix Valley, AZ area. Scrapes events from
 ## Architecture
 
 ```
-sources.py ──▶ pagination_engine.py ──▶ llm_scrape_core.py ──▶ Groq (or Ollama)
- (config)        (5 handlers)            (fetch/clean/ask)       (LLM)
+sources.py ──▶ scrape/pagination.py ──▶ scrape/core.py ──▶ Groq (or Ollama)
+ (config)        (5 handlers)            (fetch/clean/ask)     (LLM)
 ```
 
 ```
@@ -127,7 +127,7 @@ Sort by "Relevance Score" on the main page to see your personalized ranking. If 
    ),
    ```
 3. Add a `TRIM_PATTERNS` entry in the same file to strip site boilerplate
-4. Test: `python _test_llm_scrape.py mysite` (or `docker compose run --rm scraper ...`)
+4. Test: `python tools/test_scraper.py mysite` (or `docker compose run --rm scraper ...`)
 
 Full walkthrough with trim-pattern research in [HOW_TO_ADD_SCRAPERS.md](HOW_TO_ADD_SCRAPERS.md). No custom Python for typical sites.
 
@@ -147,12 +147,15 @@ Append without purging: `python llm_scraper.py --no-purge`.
 
 ```
 sources.py              # SINGLE SOURCE OF TRUTH: SITES + TRIM_PATTERNS
-pagination_engine.py    # 5 pagination handlers
-llm_scrape_core.py      # fetch / clean / ask-the-LLM utilities
+scrape/pagination.py    # 5 pagination handlers
+scrape/core.py          # fetch / clean / ask-the-LLM utilities
+scrape/artifacts.py     # debug_artifacts/ writer
 llm_scraper.py          # production entry point + DB persistence
 score_events.py         # batch event scoring
-llm_provider.py         # unified Groq / Ollama call path
-groq_rate_limiter.py    # multi-key TPM/TPD-aware rate limiting
+llm/provider.py         # unified Groq / Ollama call path
+llm/rate_limiter.py     # multi-key TPM/TPD-aware rate limiting
+debug/                  # step-by-step pipeline tools (fetch/clean/chunk/llm/pipeline/source)
+tools/                  # test_scraper.py, tools/check_groq_quota.py
 database/models.py      # SQLAlchemy models + WAL bootstrap
 server/app.py           # Flask UI
 docker-compose.yml      # web / scraper / ollama
@@ -161,11 +164,11 @@ debug_artifacts/        # live scrape artifacts (bind-mounted in Docker)
 
 ## Troubleshooting
 
-**Scraper returns 0 events** — run `_test_llm_scrape.py <key> --dump` to see the cleaned text the LLM saw. Try raising `wait` in `sources.py` if JS-heavy.
+**Scraper returns 0 events** — run `tools/test_scraper.py <key> --dump` to see the cleaned text the LLM saw. Try raising `wait` in `sources.py` if JS-heavy.
 
 **Akamai / bot detection** — Gilbert and Scottsdale Arts use Akamai; occasional failure is probabilistic. Longer `wait_secs` and fresh Selenium sessions help.
 
-**Rate limit errors (429)** — Groq free tier has per-minute (TPM) and per-day (TPD) token limits. Per-minute info is in `check_groq_quota.py`, but daily token usage is only visible on `/llm-usage` (Groq doesn't expose daily tokens in API headers). Add a second Groq key as `GROQ_API_KEY_2` in `.env` to double the combined quota.
+**Rate limit errors (429)** — Groq free tier has per-minute (TPM) and per-day (TPD) token limits. Per-minute info is in `tools/tools/check_groq_quota.py`, but daily token usage is only visible on `/llm-usage` (Groq doesn't expose daily tokens in API headers). Add a second Groq key as `GROQ_API_KEY_2` in `.env` to double the combined quota.
 
 **Scoring seems frozen** — scoring is manual. After scraping, run `score_events.py`. After changing your profile, run `score_events.py --all`.
 

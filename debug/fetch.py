@@ -1,34 +1,34 @@
 """
-debug_fetch.py -- Stage 1: Fetch raw HTML and inspect it.
+debug/fetch.py -- Stage 1: Fetch raw HTML and inspect it.
 
 Fetches a source URL and shows the raw HTML size, fetch time, and the first
 1000 chars so you can check for bot-blocks before running the full pipeline.
 
 USAGE
 -----
-    python debug_fetch.py <key>                    # use source config
-    python debug_fetch.py <key> --wait 20          # override Selenium wait seconds
-    python debug_fetch.py <key> --scroll 5         # override scroll passes
-    python debug_fetch.py <key> --page 2           # fetch page 2 (url_param sites)
-    python debug_fetch.py --url https://... --selenium  # arbitrary URL with Selenium
-    python debug_fetch.py --url https://...        # arbitrary URL with requests
-    python debug_fetch.py list                     # list all site keys
-    python debug_fetch.py <key> --no-save          # don't write artifact
+    python debug/fetch.py <key>                    # use source config
+    python debug/fetch.py <key> --wait 20          # override Selenium wait seconds
+    python debug/fetch.py <key> --scroll 5         # override scroll passes
+    python debug/fetch.py <key> --page 2           # fetch page 2 (url_param sites)
+    python debug/fetch.py --url https://... --selenium  # arbitrary URL with Selenium
+    python debug/fetch.py --url https://...        # arbitrary URL with requests
+    python debug/fetch.py list                     # list all site keys
+    python debug/fetch.py <key> --no-save          # don't write artifact
 
 Saves: /tmp/debug/{source}/page_N_raw.html
 """
 
 import sys, os, time, argparse
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import debug_utils as u
+from debug import utils as u
 
 
 def run(key: str, url_override: str, use_selenium_override: bool | None,
         wait_override: int | None, scroll_override: int | None,
         page_num: int, save: bool):
 
-    from llm_scrape_core import fetch_requests, fetch_selenium, close_driver
+    from scrape.core import fetch_requests, fetch_selenium, close_driver
 
     source_label = key or 'custom'
 
@@ -105,8 +105,8 @@ def run(key: str, url_override: str, use_selenium_override: bool | None,
         u.step('SAVED', 'OK', path)
         print(f'\n  Next step:')
         if key:
-            print(f'    docker compose run --rm web python debug_clean.py {key}  --from clean (using saved artifact)')
-        print(f'    docker compose run --rm web python debug_clean.py --file {path}' + (f' --source {key}' if key else ''))
+            print(f'    docker compose run --rm web python debug/clean.py {key}  --from clean (using saved artifact)')
+        print(f'    docker compose run --rm web python debug/clean.py --file {path}' + (f' --source {key}' if key else ''))
 
 
 def main():

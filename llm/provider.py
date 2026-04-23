@@ -1,17 +1,17 @@
 """
-llm_provider.py — Unified LLM provider abstraction.
+llm/provider.py — Unified LLM provider abstraction.
 
 Supports Groq and Ollama via the OpenAI-compatible API.
 Both providers use the same client interface; only the base_url and api_key differ.
 
-Groq calls go through the rate limiter (groq_rate_limiter.py), which:
+Groq calls go through the rate limiter (llm/rate_limiter.py), which:
   - Tracks limits per (key, model) pair — a 429 on one combo doesn't block others
   - Switches between API keys and models on 429 errors
   - Distinguishes TPM limits (short wait) from daily limits (long wait)
   - Optionally falls back to Ollama when all (key, model) combos are daily-exhausted
 
 Usage:
-    from llm_provider import call_llm
+    from llm.provider import call_llm
 
     # Use the default provider (config.LLM_PROVIDER)
     content = call_llm(messages=[...], call_type='scraping')
@@ -125,7 +125,7 @@ def _call_llm_groq(messages, call_type, temperature, response_format) -> str:
     Tries up to (keys × models + 1) times, letting the rate limiter decide
     which combination to use each attempt.
     """
-    from groq_rate_limiter import (
+    from llm.rate_limiter import (
         pick_key_and_model, record_rate_limit, all_groq_combinations_daily_exhausted
     )
 

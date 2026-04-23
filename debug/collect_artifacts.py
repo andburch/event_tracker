@@ -1,14 +1,14 @@
 """
 Collect page_1_cleaned.txt artifacts for every site.
 Skips sites that already have a saved artifact.
-Run directly on host: python3 _collect_artifacts.py
+Run directly on host: python3 debug/collect_artifacts.py
 """
 import os, sys, time
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from sources import SITES
-from llm_scrape_core import fetch_requests, fetch_selenium, close_driver, clean_html
-import debug_utils as u
+from scrape.core import fetch_requests, fetch_selenium, close_driver, clean_html
+from debug import utils as u
 
 skip_existing = '--force' not in sys.argv
 

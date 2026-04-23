@@ -17,20 +17,25 @@ python score_events.py --all             # Re-score every future event (after pr
 python server/app.py                     # Start web server (http://localhost:5000)
 
 # Testing
-python _test_llm_scrape.py <site>        # Test individual scraper
-python _test_llm_scrape.py <site> --dump # Test with HTML dump
-python check_groq_quota.py               # Check per-minute tokens & daily requests (NOT daily tokens)
+python tools/test_scraper.py <site>        # Test individual scraper
+python tools/test_scraper.py <site> --dump # Test with HTML dump
+python tools/tools/check_groq_quota.py           # Check per-minute tokens & daily requests (NOT daily tokens)
 ```
 
-> **Quota caveat:** `check_groq_quota.py` only shows per-minute token (TPM) and daily request (RPD) limits from Groq's API headers. Groq does **not** expose daily token (TPD) usage in headers. The `/llm-usage` dashboard computes rolling 24h token usage from the DB and is the authoritative source for daily token budget status.
+> **Quota caveat:** `tools/tools/check_groq_quota.py` only shows per-minute token (TPM) and daily request (RPD) limits from Groq's API headers. Groq does **not** expose daily token (TPD) usage in headers. The `/llm-usage` dashboard computes rolling 24h token usage from the DB and is the authoritative source for daily token budget status.
 
 ## File Locations
 
 | File | Purpose |
 |------|---------|
 | `sources.py` | **EDIT THIS** to add new scrapers -- contains `SITES` AND `TRIM_PATTERNS` |
-| `pagination_engine.py` | Pagination logic (rarely edit) |
-| `llm_scrape_core.py` | Low-level utilities (rarely edit) |
+| `scrape/pagination.py` | Pagination logic (rarely edit) |
+| `scrape/core.py` | Low-level utilities (rarely edit) |
+| `scrape/artifacts.py` | Per-scrape artifact writer (rarely edit) |
+| `llm/provider.py` | Unified Groq/Ollama call path (rarely edit) |
+| `llm/rate_limiter.py` | Multi-key TPM/TPD rate limiter (rarely edit) |
+| `debug/` | Step-by-step debug pipeline tools |
+| `tools/` | CLI utilities (`test_scraper.py`, `tools/check_groq_quota.py`) |
 | `llm_scraper.py` | Main scraper (rarely edit) |
 | `HOW_TO_ADD_SCRAPERS.md` | Guide for adding scrapers |
 | `ARCHITECTURE.md` | Complete system documentation |
@@ -56,7 +61,7 @@ python check_groq_quota.py               # Check per-minute tokens & daily reque
    ```
 3. **Collect artifact and find trim pattern:**
    ```bash
-   python3 _collect_artifacts.py          # saves debug_artifacts/<key>/page_1_cleaned.txt
+   python3 debug/collect_artifacts.py     # saves debug_artifacts/<key>/page_1_cleaned.txt
    head -200 debug_artifacts/mykey/page_1_cleaned.txt
    # Find last line of boilerplate before first event; pick a 2-3 line span
    python3 -c "print(open('debug_artifacts/mykey/page_1_cleaned.txt').read().count('your pattern'))"
@@ -86,7 +91,7 @@ python check_groq_quota.py               # Check per-minute tokens & daily reque
 | "Access Denied" / 403 | Increase `wait` to 10-15 seconds |
 | No events found | Check if `use_selenium` should be `True` |
 | Pagination not working | Try different pagination type |
-| API quota exceeded | Check `/llm-usage` dashboard for daily token status; `check_groq_quota.py` does NOT show daily tokens |
+| API quota exceeded | Check `/llm-usage` dashboard for daily token status; `tools/tools/check_groq_quota.py` does NOT show daily tokens |
 | Scraper fails | Check `/health` dashboard for details |
 
 ## Architecture Flow
@@ -95,7 +100,7 @@ python check_groq_quota.py               # Check per-minute tokens & daily reque
 User runs: python llm_scraper.py fibber
     │
     ├─▶ Load config from sources.py (SITES + TRIM_PATTERNS)
-    ├─▶ pagination_engine.scrape_with_pagination()
+    ├─▶ scrape.pagination.scrape_with_pagination()
     │   ├─▶ fetch_selenium() or fetch_requests()
     │   ├─▶ clean_html()       -- strips tags, inlines links
     │   ├─▶ apply_trim()       -- strips site-specific boilerplate
@@ -107,12 +112,12 @@ User runs: python llm_scraper.py fibber
 ## Debug Pipeline
 
 ```bash
-python3 debug_fetch.py <key>             # Stage 1: fetch raw HTML
-python3 debug_clean.py <key>             # Stage 2: clean HTML + apply trim
-python3 debug_chunk.py <key>             # Stage 3: visualize chunking
-python3 debug_llm.py <key>               # Stage 4+5: LLM call + parse
-python3 debug_pipeline.py <key>          # Full pipeline, interactive pauses
-python3 _collect_artifacts.py            # Collect page_1_cleaned.txt for all sites
+python3 debug/fetch.py <key>             # Stage 1: fetch raw HTML
+python3 debug/clean.py <key>             # Stage 2: clean HTML + apply trim
+python3 debug/chunk.py <key>             # Stage 3: visualize chunking
+python3 debug/llm.py <key>               # Stage 4+5: LLM call + parse
+python3 debug/pipeline.py <key>          # Full pipeline, interactive pauses
+python3 debug/collect_artifacts.py       # Collect page_1_cleaned.txt for all sites
 ```
 
 ## Web Interface Routes
@@ -164,7 +169,7 @@ python3 _collect_artifacts.py            # Collect page_1_cleaned.txt for all si
 1. Check [HOW_TO_ADD_SCRAPERS.md](HOW_TO_ADD_SCRAPERS.md) for detailed examples
 2. Check [ARCHITECTURE.md](ARCHITECTURE.md) for system documentation
 3. Check `/health` dashboard for scraper status
-4. Test individual scrapers: `python _test_llm_scrape.py <key>`
+4. Test individual scrapers: `python tools/test_scraper.py <key>`
 5. Check logs for error messages
 
 ## Example: Adding Fibber Magees
@@ -192,7 +197,7 @@ Result: ✅ Found 25 events, added 7 new ones in 47s
 - [ ] Backup `events.db` before major changes
 - [ ] Test scrapers after adding new ones
 - [ ] Monitor `/health` dashboard for failures
-- [ ] Check daily token budget on `/llm-usage` dashboard (not `check_groq_quota.py` — that only shows per-minute limits)
+- [ ] Check daily token budget on `/llm-usage` dashboard (not `tools/tools/check_groq_quota.py` — that only shows per-minute limits)
 - [ ] Update documentation when adding features
 - [ ] Commit changes to git regularly
 
@@ -203,14 +208,14 @@ Result: ✅ Found 25 events, added 7 new ones in 47s
 python llm_scraper.py mysite
 
 # See raw HTML
-python _test_llm_scrape.py mysite --dump
+python tools/test_scraper.py mysite --dump
 
 # Check health
 python server/app.py
 # Visit http://localhost:5000/health
 
 # Check per-minute quota (daily tokens are on /llm-usage dashboard)
-python check_groq_quota.py
+python tools/tools/check_groq_quota.py
 
 # Check database
 sqlite3 events.db "SELECT COUNT(*) FROM event;"
@@ -229,9 +234,9 @@ docker compose logs -f web
 docker compose run --rm scraper python llm_scraper.py <key>
 docker compose run --rm scraper python score_events.py
 docker compose run --rm scraper python score_events.py --all
-docker compose run --rm scraper python _test_llm_scrape.py <key>
-docker compose run --rm scraper python _collect_artifacts.py
-docker compose run --rm scraper python check_groq_quota.py
+docker compose run --rm scraper python tools/test_scraper.py <key>
+docker compose run --rm scraper python debug/collect_artifacts.py
+docker compose run --rm scraper python tools/tools/check_groq_quota.py
 
 # Optional local Ollama (only needed if Groq is exhausted)
 docker compose --profile ollama up -d

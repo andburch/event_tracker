@@ -1,18 +1,18 @@
 """
-artifact_store.py -- Production artifact writer for scrape runs.
+scrape/artifacts.py -- Production artifact writer for scrape runs.
 
 Saves intermediate pipeline stages (raw HTML, cleaned text, chunks, prompts,
 LLM responses) to debug_artifacts/{source}/ so that debug scripts can inspect
 what a production run actually saw without re-fetching or re-calling the LLM.
 
-Filename layout matches what the debug_*.py scripts already read:
+Filename layout matches what the debug/*.py scripts already read:
     page_{N}_raw.html
     page_{N}_cleaned.txt
     page_{N}_chunk_{M}.txt
     page_{N}_chunk_{M}_prompt.txt
     page_{N}_chunk_{M}_response.json
 
-This module has no dependency on debug_utils.py -- production owns its own
+This module has no dependency on debug/utils.py -- production owns its own
 tiny I/O helper so there's zero coupling to the debug tooling.
 """
 

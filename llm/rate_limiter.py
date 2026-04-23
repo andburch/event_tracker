@@ -1,5 +1,5 @@
 """
-groq_rate_limiter.py — Intelligent Groq API key + model selection.
+llm/rate_limiter.py — Intelligent Groq API key + model selection.
 
 Groq rate limits are per-model per-account. This module tracks limits at the
 (key_label, model) level so a 429 on one combination doesn't block others.
@@ -31,8 +31,8 @@ On TPM: block this (key, model) for retry_after seconds, try next combo.
 On daily: mark (key, model) as exhausted for this session.
 On transient/unclear: cap retry_after at 90s and treat as TPM.
 
-Usage (from llm_provider.py):
-    from groq_rate_limiter import pick_key_and_model, record_rate_limit
+Usage (from llm/provider.py):
+    from llm.rate_limiter import pick_key_and_model, record_rate_limit
 
     label, api_key, model = pick_key_and_model(config.LLM_SCRAPING_MODELS)
     try:

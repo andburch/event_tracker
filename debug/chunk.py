@@ -1,5 +1,5 @@
 """
-debug_chunk.py -- Stage 3: Visualize how cleaned text gets chunked.
+debug/chunk.py -- Stage 3: Visualize how cleaned text gets chunked.
 
 Shows chunk count, sizes, estimated tokens, first/last 200 chars of each chunk,
 and the overlap zones between adjacent chunks. Useful for spotting events that
@@ -7,19 +7,19 @@ fall across chunk boundaries.
 
 USAGE
 -----
-    python debug_chunk.py <key>                                      # fetch + clean + chunk
-    python debug_chunk.py <key> --page 2                            # page 2
-    python debug_chunk.py --file /tmp/debug/source/page_1_cleaned.txt
-    python debug_chunk.py --file text.txt --chunk-size 8000 --overlap 500
-    python debug_chunk.py list                                       # list all site keys
+    python debug/chunk.py <key>                                      # fetch + clean + chunk
+    python debug/chunk.py <key> --page 2                            # page 2
+    python debug/chunk.py --file /tmp/debug/source/page_1_cleaned.txt
+    python debug/chunk.py --file text.txt --chunk-size 8000 --overlap 500
+    python debug/chunk.py list                                       # list all site keys
 
 Saves: /tmp/debug/{source}/page_N_chunk_M.txt  (one file per chunk)
 """
 
 import sys, os, time, argparse
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import debug_utils as u
+from debug import utils as u
 
 
 def run(key: str | None, source_label: str, text_file: str | None,
@@ -27,7 +27,7 @@ def run(key: str | None, source_label: str, text_file: str | None,
         overlap_override: int | None, save: bool):
 
     import config
-    from llm_scrape_core import _chunk_text
+    from scrape.core import _chunk_text
 
     u.banner(f'CHUNK  ·  {source_label}')
 
@@ -52,7 +52,7 @@ def run(key: str | None, source_label: str, text_file: str | None,
         entry = u.get_source(key)
         name, start_url, use_selenium, wait, max_pages, note, _color, _pag = entry
         print(f'  Source     : live  {start_url}')
-        from llm_scrape_core import fetch_requests, fetch_selenium, close_driver, clean_html
+        from scrape.core import fetch_requests, fetch_selenium, close_driver, clean_html
         try:
             if use_selenium:
                 if not u.check_selenium_available():
@@ -127,7 +127,7 @@ def run(key: str | None, source_label: str, text_file: str | None,
         chunk1_path = u.artifact_path(source_label, f'page_{page_num}_chunk_1.txt')
         u.step('SAVED', 'OK', u.artifact_path(source_label, f'page_{page_num}_chunk_*.txt'))
         print(f'\n  Next step:')
-        print(f'    docker compose run --rm web python debug_llm.py --file {chunk1_path} --source {source_label}')
+        print(f'    docker compose run --rm web python debug/llm.py --file {chunk1_path} --source {source_label}')
 
 
 def main():

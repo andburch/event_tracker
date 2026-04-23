@@ -74,11 +74,11 @@ Before you can find the trim pattern, you need to see what the cleaned text look
 
 ```bash
 # Option A: collect for all sites (skips existing artifacts)
-python3 _collect_artifacts.py
+python3 debug/collect_artifacts.py
 
 # Option B: fetch and clean just your new site
-python3 debug_fetch.py <key>
-python3 debug_clean.py <key>
+python3 debug/fetch.py <key>
+python3 debug/clean.py <key>
 # Artifact saved to: debug_artifacts/<key>/page_1_cleaned.txt
 ```
 
@@ -147,7 +147,7 @@ Format: `(background, border, text)` -- CSS hex strings matching the site's bran
 ### Step 8: Test
 
 ```bash
-python _test_llm_scrape.py mykey
+python tools/test_scraper.py mykey
 ```
 
 Watch the output. Does it find events? Does pagination work?
@@ -365,14 +365,14 @@ Bot detection (Akamai/Cloudflare). Try:
 
 1. Check if `use_selenium` should be `True`
 2. Increase `wait` time
-3. Use `debug_clean.py <key>` to see what text the LLM actually receives after trimming
-4. Use `debug_llm.py <key> --dry-run` to inspect the full prompt
+3. Use `debug/clean.py <key>` to see what text the LLM actually receives after trimming
+4. Use `debug/llm.py <key> --dry-run` to inspect the full prompt
 
 ### Trim Pattern Not Working
 
 1. Check the pattern appears exactly once: `python3 -c "print(open('debug_artifacts/<key>/page_1_cleaned.txt').read().count('your pattern'))"`
 2. Watch for encoding issues -- copy the text from the artifact, don't type it manually
-3. Check the trim is being applied: `debug_clean.py` shows the post-trim size
+3. Check the trim is being applied: `debug/clean.py` shows the post-trim size
 
 ### Events Have Wrong Dates
 
@@ -380,7 +380,7 @@ For calendar grid sites (bare day numbers), use `calendar_grid` type with `injec
 
 ### Pagination Not Working
 
-1. Try `debug_pipeline.py <key> --stop-after fetch` to see raw HTML
+1. Try `debug/pipeline.py <key> --stop-after fetch` to see raw HTML
 2. For `js_button`: inspect the button in browser dev tools to get the right CSS selector
 3. For `url_param`: confirm whether it's zero-indexed (`start_index: 0`)
 
@@ -390,20 +390,20 @@ For calendar grid sites (bare day numbers), use `calendar_grid` type with `injec
 
 ```bash
 # Quick test (no DB writes)
-python _test_llm_scrape.py <key>
-python _test_llm_scrape.py <key> --dump    # also shows cleaned text
+python tools/test_scraper.py <key>
+python tools/test_scraper.py <key> --dump    # also shows cleaned text
 
 # Step-by-step debug pipeline
-python3 debug_fetch.py <key>               # Stage 1: fetch HTML
-python3 debug_clean.py <key>               # Stage 2: clean + trim
-python3 debug_chunk.py <key>               # Stage 3: visualize chunking
-python3 debug_llm.py <key>                 # Stage 4+5: LLM call + parse
-python3 debug_pipeline.py <key>            # All stages with interactive pauses
+python3 debug/fetch.py <key>               # Stage 1: fetch HTML
+python3 debug/clean.py <key>               # Stage 2: clean + trim
+python3 debug/chunk.py <key>               # Stage 3: visualize chunking
+python3 debug/llm.py <key>                 # Stage 4+5: LLM call + parse
+python3 debug/pipeline.py <key>            # All stages with interactive pauses
 
 # Useful flags
-python3 debug_pipeline.py <key> --stop-after clean   # stop before LLM
-python3 debug_llm.py <key> --dry-run                  # show prompt, no API call
-python3 debug_llm.py <key> --provider both            # compare Groq vs Ollama
+python3 debug/pipeline.py <key> --stop-after clean   # stop before LLM
+python3 debug/llm.py <key> --dry-run                  # show prompt, no API call
+python3 debug/llm.py <key> --provider both            # compare Groq vs Ollama
 ```
 
 ---
@@ -417,5 +417,5 @@ When adding a new scraper, confirm:
 - [ ] Trim pattern verified: appears exactly once in `debug_artifacts/<key>/page_1_cleaned.txt`
 - [ ] Trim pattern is 2+ lines (not a single common word)
 - [ ] Trim pattern is not month-specific or event-title-specific
-- [ ] `python _test_llm_scrape.py <key>` finds events successfully
+- [ ] `python tools/test_scraper.py <key>` finds events successfully
 - [ ] `note` field documents any quirks for future reference

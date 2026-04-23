@@ -28,7 +28,7 @@ import logging
 from openai import RateLimitError, APIStatusError
 from datetime import datetime
 import config
-from llm_provider import call_llm, is_available
+from llm.provider import call_llm, is_available
 
 log = logging.getLogger(__name__)
 

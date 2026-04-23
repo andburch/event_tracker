@@ -1,8 +1,8 @@
 """
-llm_scrape_core.py -- Shared core for LLM-based event extraction
+scrape/core.py -- Shared core for LLM-based event extraction
 
 Contains all fetch, clean, chunk, and LLM-call logic used by both:
-  - _test_llm_scrape.py  (CLI test harness, prints results, no DB writes)
+  - tools/test_scraper.py  (CLI test harness, prints results, no DB writes)
   - llm_scraper.py       (production runner, saves to DB, runs scoring)
 
 HOW IT WORKS
@@ -32,7 +32,7 @@ import re, json, time, os, shutil, requests, urllib3, logging, threading
 import openai
 from datetime import datetime
 from bs4 import BeautifulSoup
-from llm_provider import call_llm
+from llm.provider import call_llm
 import config
 
 # Configure logging
@@ -218,7 +218,7 @@ def _ask_llm_single(
             # Save artifacts on success (must not break the scrape under any circumstance)
             if artifact_prefix:
                 try:
-                    import artifact_store
+                    from scrape import artifacts as artifact_store
                     key, fname_base = artifact_prefix.rsplit('/', 1)
                     artifact_store.save(key, f'{fname_base}_chunk_{chunk_num}.txt', text)
                     artifact_store.save(key, f'{fname_base}_chunk_{chunk_num}_prompt.txt', prompt)

@@ -1,5 +1,5 @@
 """
-pagination_engine.py -- Configuration-driven pagination for event scrapers
+scrape/pagination.py -- Configuration-driven pagination for event scrapers
 
 This module provides a unified pagination system that handles all scraping patterns
 through declarative configuration rather than procedural code. Adding a new scraper
@@ -32,7 +32,7 @@ import re, time, calendar as cal_mod
 from datetime import datetime, timedelta
 from typing import Callable
 from selenium.webdriver.common.by import By
-from llm_scrape_core import (
+from scrape.core import (
     fetch_requests, fetch_selenium, close_driver, get_driver,
     clean_html, ask_llm, _SPOOF_UA
 )
@@ -360,7 +360,7 @@ def scrape_with_pagination(
     # Clear stale artifacts from prior runs, then save each stage as we go.
     # Disk errors are swallowed — artifact failures must not break scrapes.
     try:
-        import artifact_store
+        from scrape import artifacts as artifact_store
         artifact_store.prepare_source_dir(key)
     except OSError as e:
         log.warning(f"Artifact dir prep failed: {e}")

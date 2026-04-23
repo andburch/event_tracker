@@ -1,5 +1,5 @@
 """
-debug_llm.py -- Stage 4+5: LLM call inspector and response parser.
+debug/llm.py -- Stage 4+5: LLM call inspector and response parser.
 
 Sends a single text chunk to the LLM and shows everything: the full prompt,
 the raw response string before JSON parsing, parsed events with field detail,
@@ -7,22 +7,22 @@ and which events would be dropped in production due to unparseable dates.
 
 USAGE
 -----
-    python debug_llm.py <key>                                       # fetch+clean+chunk → send chunk 1
-    python debug_llm.py --file /tmp/debug/source/page_1_chunk_1.txt --source <key>
-    python debug_llm.py --file chunk.txt --source test --dry-run    # show prompt only, no API call
-    python debug_llm.py --file chunk.txt --source test --provider ollama
-    python debug_llm.py --file chunk.txt --source test --provider both  # compare groq + ollama
-    python debug_llm.py --file chunk.txt --source test --chunk 2   # mark as chunk 2 (not last)
-    python debug_llm.py list                                        # list all site keys
+    python debug/llm.py <key>                                       # fetch+clean+chunk → send chunk 1
+    python debug/llm.py --file /tmp/debug/source/page_1_chunk_1.txt --source <key>
+    python debug/llm.py --file chunk.txt --source test --dry-run    # show prompt only, no API call
+    python debug/llm.py --file chunk.txt --source test --provider ollama
+    python debug/llm.py --file chunk.txt --source test --provider both  # compare groq + ollama
+    python debug/llm.py --file chunk.txt --source test --chunk 2   # mark as chunk 2 (not last)
+    python debug/llm.py list                                        # list all site keys
 
 Saves: /tmp/debug/{source}/page_N_chunk_M_prompt.txt
        /tmp/debug/{source}/page_N_chunk_M_response.json
 """
 
 import sys, os, time, json, argparse
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import debug_utils as u
+from debug import utils as u
 
 
 def build_prompt(text: str, url: str, site_hint: str, is_last_chunk: bool) -> str:
@@ -68,8 +68,8 @@ def build_prompt(text: str, url: str, site_hint: str, is_last_chunk: bool) -> st
 
 def call_llm(prompt: str, provider: str, source_label: str) -> tuple[str | None, float, object | None]:
     """Call LLM and return (content, duration, usage). content=None on error."""
-    from llm_provider import get_client, _MODELS
-    from llm_scrape_core import EVENT_SCHEMA
+    from llm.provider import get_client, _MODELS
+    from scrape.core import EVENT_SCHEMA
 
     model = _MODELS[(provider, 'scraping')]()
     client = get_client(provider)
@@ -213,7 +213,7 @@ def run(key: str | None, source_label: str, text_file: str | None,
         entry = u.get_source(key)
         name, start_url, use_selenium, wait, max_pages, note, _color, _pag = entry
         url = url or start_url
-        from llm_scrape_core import fetch_requests, fetch_selenium, close_driver, clean_html, _chunk_text
+        from scrape.core import fetch_requests, fetch_selenium, close_driver, clean_html, _chunk_text
         try:
             if use_selenium:
                 if not u.check_selenium_available():

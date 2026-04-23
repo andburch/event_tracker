@@ -110,11 +110,11 @@ Most sites prepend nav menus, filter sidebars, category dropdowns, or cookie con
 - Slows local/CPU-only models by **1.5-2.6x** (tested across gemma3:4b, mistral:7b, phi3:mini, qwen2.5:3b)
 - Can cause smaller models to fail entirely (phi3:mini returned 0 events on the full Chandler page but worked on the trimmed version)
 
-`TRIM_PATTERNS` in `sources.py` defines a cut point per site. `pagination_engine.apply_trim()` applies it after `clean_html()`, before `ask_llm()`.
+`TRIM_PATTERNS` in `sources.py` defines a cut point per site. `scrape.pagination.apply_trim()` applies it after `clean_html()`, before `ask_llm()`.
 
 ### How trim patterns were derived
 
-For each site (32 as of this writing), `_collect_artifacts.py` fetches and cleans page 1, saving to `debug_artifacts/<key>/page_1_cleaned.txt`. Each artifact was inspected manually to find the last line of boilerplate before the first event entry. Patterns were verified to appear exactly once in the artifact.
+For each site (32 as of this writing), `debug/collect_artifacts.py` fetches and cleans page 1, saving to `debug_artifacts/<key>/page_1_cleaned.txt`. Each artifact was inspected manually to find the last line of boilerplate before the first event entry. Patterns were verified to appear exactly once in the artifact.
 
 ### Impact by site
 

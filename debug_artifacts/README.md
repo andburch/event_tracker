@@ -1,7 +1,7 @@
 # debug_artifacts/
 
 Populated automatically by every scrape run (`llm_scraper.py`) and the debug
-pipeline (`debug_*.py`). Per-source subdirectories contain:
+pipeline (`debug/*.py`). Per-source subdirectories contain:
 
 - `page_N_raw.html` — raw HTML from fetch
 - `page_N_cleaned.txt` — after `clean_html()` + `apply_trim()`

@@ -1,5 +1,5 @@
 """
-_test_llm_scrape.py -- CLI test harness for LLM-based event extraction
+tools/test_scraper.py -- CLI test harness for LLM-based event extraction
 
 Imports all fetch/LLM/site logic from llm_scrape_core. This file only
 contains the test runner (pretty-prints results, no DB writes) and the
@@ -7,20 +7,22 @@ CLI entry point.
 
 USAGE
 -----
-    python _test_llm_scrape.py list                  # show all site keys + URLs
-    python _test_llm_scrape.py <site_key>            # test one site
-    python _test_llm_scrape.py <key1> <key2> ...     # test multiple sites
-    python _test_llm_scrape.py all                   # run every site sequentially
-    python _test_llm_scrape.py <site_key> --dump     # also print raw text sent to LLM
+    python tools/test_scraper.py list                  # show all site keys + URLs
+    python tools/test_scraper.py <site_key>            # test one site
+    python tools/test_scraper.py <key1> <key2> ...     # test multiple sites
+    python tools/test_scraper.py all                   # run every site sequentially
+    python tools/test_scraper.py <site_key> --dump     # also print raw text sent to LLM
 """
 
-import sys, time
-from llm_scrape_core import (
+import os, sys, time
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
+from scrape.core import (
     fetch_requests, fetch_selenium, close_driver,
     clean_html, ask_llm,
 )
 from sources import SITES
-from pagination_engine import apply_trim
+from scrape.pagination import apply_trim
 
 
 def run_test(name, start_url, use_selenium=False, wait=5, max_pages=3,
@@ -112,9 +114,9 @@ if __name__ == '__main__':
     target = args[0] if args else None
 
     if not target or target in ('-h', '--help'):
-        print("Usage: python _test_llm_scrape.py <site_key> [<key2> ...] [--dump]")
-        print("       python _test_llm_scrape.py all [--dump]")
-        print("       python _test_llm_scrape.py list")
+        print("Usage: python tools/test_scraper.py <site_key> [<key2> ...] [--dump]")
+        print("       python tools/test_scraper.py all [--dump]")
+        print("       python tools/test_scraper.py list")
         print(f"\nSite keys:")
         for k, entry in SITES.items():
             name, url, use_sel, wait, max_pages, note = entry[:6]

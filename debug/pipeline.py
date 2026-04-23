@@ -1,5 +1,5 @@
 """
-debug_pipeline.py -- Full scrape pipeline orchestrator with step-by-step output.
+debug/pipeline.py -- Full scrape pipeline orchestrator with step-by-step output.
 
 Runs the complete fetch → clean → chunk → LLM → parse → validate flow, pausing
 between chunks so you can inspect what the LLM sees and returns without committing
@@ -7,20 +7,20 @@ to the full run. Saves artifacts at every stage so you can resume from any point
 
 USAGE
 -----
-    python debug_pipeline.py <key>                        # full run, interactive pauses
-    python debug_pipeline.py <key> --auto                 # no pauses
-    python debug_pipeline.py <key> --page 2               # process page 2 only (LLM sites only)
-    python debug_pipeline.py <key> --stop-after fetch     # stop after fetching HTML
-    python debug_pipeline.py <key> --stop-after clean     # stop after cleaning
-    python debug_pipeline.py <key> --stop-after chunk     # stop after chunking
-    python debug_pipeline.py <key> --stop-after llm       # show LLM output, skip final parse summary
-    python debug_pipeline.py <key> --no-llm               # fetch+clean+chunk only (no API calls)
-    python debug_pipeline.py <key> --from clean           # skip fetch, use saved HTML artifact
-    python debug_pipeline.py <key> --from llm             # skip fetch+clean+chunk, use saved chunks
-    python debug_pipeline.py <key> --provider ollama      # use Ollama instead of Groq
-    python debug_pipeline.py <key> --provider both        # run both providers on each chunk
-    python debug_pipeline.py --url https://... --selenium # arbitrary URL (no source key needed)
-    python debug_pipeline.py list                         # list all site keys
+    python debug/pipeline.py <key>                        # full run, interactive pauses
+    python debug/pipeline.py <key> --auto                 # no pauses
+    python debug/pipeline.py <key> --page 2               # process page 2 only (LLM sites only)
+    python debug/pipeline.py <key> --stop-after fetch     # stop after fetching HTML
+    python debug/pipeline.py <key> --stop-after clean     # stop after cleaning
+    python debug/pipeline.py <key> --stop-after chunk     # stop after chunking
+    python debug/pipeline.py <key> --stop-after llm       # show LLM output, skip final parse summary
+    python debug/pipeline.py <key> --no-llm               # fetch+clean+chunk only (no API calls)
+    python debug/pipeline.py <key> --from clean           # skip fetch, use saved HTML artifact
+    python debug/pipeline.py <key> --from llm             # skip fetch+clean+chunk, use saved chunks
+    python debug/pipeline.py <key> --provider ollama      # use Ollama instead of Groq
+    python debug/pipeline.py <key> --provider both        # run both providers on each chunk
+    python debug/pipeline.py --url https://... --selenium # arbitrary URL (no source key needed)
+    python debug/pipeline.py list                         # list all site keys
 
 Flow per page:
   1. RESOLVE  — compute URL for this page
@@ -40,9 +40,9 @@ Exit codes: 0 = all stages completed, 1 = failure
 """
 
 import sys, os, time, json, argparse
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import debug_utils as u
+from debug import utils as u
 
 STAGE_ORDER = ['fetch', 'clean', 'chunk', 'llm', 'parse']
 
@@ -91,8 +91,8 @@ def build_prompt(text: str, url: str, site_hint: str, is_last_chunk: bool) -> st
 # ── LLM call ──────────────────────────────────────────────────────────────────
 
 def call_llm(prompt: str, provider: str) -> tuple[str | None, float, object | None]:
-    from llm_provider import get_client, _MODELS
-    from llm_scrape_core import EVENT_SCHEMA
+    from llm.provider import get_client, _MODELS
+    from scrape.core import EVENT_SCHEMA
     model = _MODELS[(provider, 'scraping')]()
     client = get_client(provider)
     t0 = time.time()
@@ -132,7 +132,7 @@ def process_page(
     Returns (all_events, next_page_url, should_continue).
     """
     import config
-    from llm_scrape_core import clean_html, _chunk_text
+    from scrape.core import clean_html, _chunk_text
 
     u.banner(f'PAGE {page_num}  ·  {url[:80]}')
 
@@ -150,7 +150,7 @@ def process_page(
         html = u.load_artifact(source_label, filename)
         u.step('FETCH', 'SKIP', f'using saved artifact  ({u.fmt_size(len(html))})')
     else:
-        from llm_scrape_core import fetch_requests, fetch_selenium
+        from scrape.core import fetch_requests, fetch_selenium
         t0 = time.time()
         try:
             if use_selenium:
@@ -387,7 +387,7 @@ def process_page(
                 break
             elif resp == 'save':
                 print(f'  Artifacts saved to {u.artifact_path(source_label, "")}')
-                print(f'  Resume: python debug_pipeline.py {source_label} --from llm --page {page_num}')
+                print(f'  Resume: python debug/pipeline.py {source_label} --from llm --page {page_num}')
                 return all_events, next_page_url, False
 
     return all_events, next_page_url, True
@@ -399,7 +399,7 @@ def run(key: str, url_override: str | None, use_selenium_override: bool | None,
         wait_override: int | None, providers: list[str], stop_after: str | None,
         from_stage: str | None, no_llm: bool, auto: bool, page_filter: int | None):
 
-    from llm_scrape_core import close_driver
+    from scrape.core import close_driver
 
     # Resolve config
     if key:
@@ -497,7 +497,7 @@ def run(key: str, url_override: str | None, use_selenium_override: bool | None,
 
         else:
             # Non-LLM pagination: generate URLs upfront
-            from debug_source import _compute_urls
+            from debug.source import _compute_urls
             urls = _compute_urls(key, entry)
             for i, page_url in enumerate(urls):
                 page_num = i + 1

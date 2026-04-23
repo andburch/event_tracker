@@ -1,5 +1,5 @@
 """
-debug_utils.py -- Shared helpers for all debug_*.py scripts.
+debug/utils.py -- Shared helpers for all debug/*.py scripts.
 
 Not run directly -- imported only.
 
@@ -15,7 +15,7 @@ import os, sys, re, time
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
-PROJECT_ROOT = os.path.dirname(os.path.abspath(__file__))
+PROJECT_ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 # Artifacts go inside the project directory so they persist across Docker runs.
 # The project root is mounted as .:/app in docker-compose, so this survives container restarts.
 DEBUG_DIR    = os.path.join(PROJECT_ROOT, 'debug_artifacts')

@@ -19,8 +19,8 @@ Run scoring separately after scraping:
 import sys, time, re
 from datetime import datetime, timedelta, date as date_type
 from database.models import Session, Event, ScraperRun
-from llm_scrape_core import close_driver
-from pagination_engine import scrape_with_pagination
+from scrape.core import close_driver
+from scrape.pagination import scrape_with_pagination
 from sources import SITES
 
 
@@ -206,7 +206,8 @@ def scrape_and_save(
 
     # Append DB-side stats to the run summary artifact
     try:
-        import json, os, artifact_store
+        import json, os
+        from scrape import artifacts as artifact_store
         summary_file = os.path.join(artifact_store.ARTIFACT_ROOT, key, 'run_summary.json')
         if os.path.exists(summary_file):
             with open(summary_file) as f:

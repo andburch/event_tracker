@@ -1,5 +1,5 @@
 """
-debug_source.py -- Inspect source config and generated URLs without fetching.
+debug/source.py -- Inspect source config and generated URLs without fetching.
 
 Shows every config field, the URLs that would be fetched for each page,
 estimated LLM call count, estimated runtime, and a quick HTTP reachability
@@ -7,15 +7,15 @@ check (no Selenium, no LLM).
 
 USAGE
 -----
-    python debug_source.py <key>       # inspect one source
-    python debug_source.py --all       # inspect all sources
-    python debug_source.py list        # list keys only
+    python debug/source.py <key>       # inspect one source
+    python debug/source.py --all       # inspect all sources
+    python debug/source.py list        # list keys only
 """
 
 import sys, os, time, argparse
-sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-import debug_utils as u
+from debug import utils as u
 
 
 def inspect_source(key: str):

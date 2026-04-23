@@ -9,15 +9,15 @@ TRIM_PATTERNS strips site-specific boilerplate (nav menus, filter sidebars,
 cookie consent walls) from cleaned HTML before it reaches the LLM.  This
 reduces token usage and speeds up local models significantly.
 
-Both llm_scrape_core.py and server/app.py import SITES from here.
-pagination_engine.py imports TRIM_PATTERNS from here.
+Both scrape/core.py and server/app.py import SITES from here.
+scrape/pagination.py imports TRIM_PATTERNS from here.
 Adding a new site means editing only this file.
 
 SITES entry format:
     key: (display_name, url, use_selenium, wait_secs, max_pages, note, color, pagination_config)
 
 color: (background, border, text) CSS hex strings for calendar chips.
-pagination_config: Dict defining pagination behavior (see pagination_engine.py for details)
+pagination_config: Dict defining pagination behavior (see scrape/pagination.py for details)
     - If None or omitted: Uses default LLM pagination (LLM extracts next_page_url)
     - Otherwise: Dict with 'type' key and type-specific config
 
@@ -386,7 +386,7 @@ SITES = {
 #   - None: no trim (page opens directly with events).
 #
 # HOW TO FIND THE RIGHT STRING FOR A NEW SITE
-#  1. Run: python3 _collect_artifacts.py          # saves debug_artifacts/<key>/page_1_cleaned.txt
+#  1. Run: python3 debug/collect_artifacts.py          # saves debug_artifacts/<key>/page_1_cleaned.txt
 #  2. Read the artifact: head -200 debug_artifacts/<key>/page_1_cleaned.txt
 #  3. Find the last line of boilerplate before the first real event appears
 #  4. Pick a multi-line span (2–3 lines) that:

@@ -1,5 +1,5 @@
 """
-check_groq_quota.py — Show remaining Groq API quota from response headers.
+tools/check_groq_quota.py — Show remaining Groq API quota from response headers.
 
 WARNING: This script only shows per-minute token (TPM) and daily request (RPD)
 limits from Groq's response headers. Groq does NOT expose daily token (TPD)
@@ -21,13 +21,15 @@ headers Groq returns on every response:
 Checks all configured keys (GROQ_API_KEY + GROQ_API_KEY_2) by default.
 
 Usage:
-    python check_groq_quota.py                    # Check all keys, all models
-    python check_groq_quota.py --model <name>     # Check specific model on all keys
-    python check_groq_quota.py --key 1            # Check only key 1
-    python check_groq_quota.py --key 2            # Check only key 2
+    python tools/check_groq_quota.py                    # Check all keys, all models
+    python tools/check_groq_quota.py --model <name>     # Check specific model on all keys
+    python tools/check_groq_quota.py --key 1            # Check only key 1
+    python tools/check_groq_quota.py --key 2            # Check only key 2
 """
 
-import sys
+import os, sys
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+
 import httpx
 import config
 
