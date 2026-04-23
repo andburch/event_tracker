@@ -2,6 +2,8 @@
 __pycache__/
 .env
 events.db
+events.db-shm
+events.db-wal
 venv/
 .vscode/
 debug_artifacts/

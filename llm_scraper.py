@@ -294,9 +294,14 @@ def main():
 
         for key in keys:
             name, url, use_sel, wait, max_pages, note, _color, pagination_config = SITES[key]
-            # Resolve dynamic date placeholders (e.g. {today}, {plus90})
+            # Resolve dynamic date placeholders (e.g. {today}, {plus90}).
+            # Other placeholders like {month_name} belong to the pagination
+            # engine and must pass through untouched.
             from sources import _today, _plus90
-            url = url.format(today=_today(), plus90=_plus90())
+            class _PassThrough(dict):
+                def __missing__(self, key):
+                    return '{' + key + '}'
+            url = url.format_map(_PassThrough(today=_today(), plus90=_plus90()))
             print(f"\n{'='*60}")
             print(f"SCRAPING: {name}")
             if note:

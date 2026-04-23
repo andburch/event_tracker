@@ -258,6 +258,14 @@ class GroqModelLimit(Base):
 # create_all is idempotent — safe to call on every import.
 # New tables are created; existing ones are left untouched.
 engine  = create_engine(config.DATABASE_URL)
+
+# WAL allows concurrent readers + one writer — required because the web
+# and scraper containers both open this SQLite file.
+if config.DATABASE_URL.startswith('sqlite'):
+    with engine.connect() as _conn:
+        _conn.execute(text("PRAGMA journal_mode=WAL"))
+        _conn.commit()
+
 Base.metadata.create_all(engine)
 Session = sessionmaker(bind=engine)
 

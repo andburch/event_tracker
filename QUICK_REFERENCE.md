@@ -215,3 +215,30 @@ python check_groq_quota.py
 # Check database
 sqlite3 events.db "SELECT COUNT(*) FROM event;"
 ```
+
+## Docker workflow
+
+Three services: `web` (Flask UI, always up), `scraper` (ephemeral, profile-gated), `ollama` (optional, profile-gated). `web` + `scraper` share the events DB via the `events_data` named volume; `.:/app` is bind-mounted so code edits and scrape artifacts (`debug_artifacts/`) are live on the host.
+
+```bash
+# Default: web only (Groq handles all LLM work)
+docker compose up -d --build
+docker compose logs -f web
+
+# One-shot scraping / scoring via ephemeral scraper container
+docker compose run --rm scraper python llm_scraper.py <key>
+docker compose run --rm scraper python score_events.py
+docker compose run --rm scraper python score_events.py --all
+docker compose run --rm scraper python _test_llm_scrape.py <key>
+docker compose run --rm scraper python _collect_artifacts.py
+docker compose run --rm scraper python check_groq_quota.py
+
+# Optional local Ollama (only needed if Groq is exhausted)
+docker compose --profile ollama up -d
+docker compose exec ollama ollama pull gemma3:4b    # one-time
+docker compose exec ollama ollama list
+
+# Scrape artifacts are live at ./debug_artifacts/<source>/ on the host
+
+docker compose down                                 # stop; named volumes preserved
+```

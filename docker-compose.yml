@@ -1,11 +1,13 @@
 services:
   web:
     build: .
+    image: event_tracker:latest
+    command: gunicorn -w 2 -b 0.0.0.0:5000 --timeout 120 wsgi:app
     ports:
       - "5000:5000"
     volumes:
-      - events_data:/data
       - .:/app
+      - events_data:/data
     env_file:
       - .env
     environment:
@@ -19,8 +21,22 @@ services:
       retries: 3
       start_period: 15s
 
+  scraper:
+    build: .
+    image: event_tracker:latest
+    profiles: ["scraper"]
+    volumes:
+      - .:/app
+      - events_data:/data
+    env_file:
+      - .env
+    environment:
+      - DATABASE_URL=sqlite:////data/events.db
+      - OLLAMA_URL=http://ollama:11434
+
   ollama:
     image: ollama/ollama
+    profiles: ["ollama"]
     ports:
       - "11434:11434"
     volumes:

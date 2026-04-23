@@ -79,7 +79,7 @@ OLLAMA_MAX_TOKENS     = int(os.environ.get('OLLAMA_MAX_TOKENS', '16384'))  # Oll
 # Add more models here to expand the combinatorial quota space.
 # llama-3.3-70b-versatile: Better output quality, 12k TPM, 100k TPD per key
 # llama-3.1-8b-instant: Faster, lower quality, 6k TPM, 500k TPD per key
-LLM_SCRAPING_MODELS = ['llama-3.3-70b-versatile', 'moonshotai/kimi-k2-instruct']
+LLM_SCRAPING_MODELS = ['llama-3.3-70b-versatile', 'meta-llama/llama-4-scout-17b-16e-instruct']
 
 # Ordered list of models to use for event scoring/recommendation.
 LLM_SCORING_MODELS = ['llama-3.3-70b-versatile']
