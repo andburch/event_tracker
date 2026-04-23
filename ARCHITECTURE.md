@@ -1,562 +1,235 @@
-# Phoenix Events Recommender - Architecture Documentation
+# Phoenix Events Recommender — Architecture
+
+A configuration-driven event aggregator that scrapes 32 Phoenix Valley sources, stores them in SQLite, and ranks them by personal preference with an LLM.
 
 ## System Overview
 
-Phoenix Events Recommender is a configuration-driven event aggregation system that scrapes events from 21+ Phoenix Valley sources, stores them in SQLite, and uses LLM-based preference learning to recommend relevant events to users.
-
-## High-Level Architecture
-
 ```
-┌─────────────────────────────────────────────────────────────────────┐
-│                        USER INTERACTIONS                             │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│  CLI Commands              Web Interface           Batch Processing  │
-│  ├─ llm_scraper.py        ├─ server/app.py        ├─ score_events.py│
-│  ├─ list                  ├─ / (event list)       └─ (LLM scoring)  │
-│  ├─ scrape <site>         ├─ /calendar                              │
-│  └─ scrape all            ├─ /profile                               │
-│                           └─ /health                                 │
-│                                                                       │
-└───────────────────────────┬─────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                      CORE SCRAPING ENGINE                            │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│  ┌──────────────┐      ┌──────────────────┐      ┌───────────────┐ │
-│  │  sources.py  │─────▶│ pagination_engine│─────▶│llm_scrape_core│ │
-│  │              │      │      .py          │      │     .py       │ │
-│  │ SITES dict   │      │                  │      │               │ │
-│  │ (21 sites)   │      │ 5 pagination     │      │ fetch_*()     │ │
-│  │              │      │ handlers         │      │ clean_html()  │ │
-│  │ Config:      │      │                  │      │ ask_llm()     │ │
-│  │ - URL        │      │ ├─ llm           │      │               │ │
-│  │ - Selenium?  │      │ ├─ multi_month   │      └───────────────┘ │
-│  │ - Wait time  │      │ ├─ url_param     │              │         │
-│  │ - Max pages  │      │ ├─ js_button     │              │         │
-│  │ - Pagination │      │ └─ calendar_grid │              │         │
-│  │   config     │      │                  │              │         │
-│  └──────────────┘      └──────────────────┘              │         │
-│                                                           │         │
-│                                                           ▼         │
-│                                                  ┌─────────────────┐│
-│                                                  │   Groq API      ││
-│                                                  │   (LLM)         ││
-│                                                  │                 ││
-│                                                  │ - Extract events││
-│                                                  │ - Find next URL ││
-│                                                  │ - Score events  ││
-│                                                  └─────────────────┘│
-└─────────────────────────────────────────────────────────────────────┘
-                            │
-                            ▼
-┌─────────────────────────────────────────────────────────────────────┐
-│                      DATA PERSISTENCE                                │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│  ┌──────────────────────────────────────────────────────────────┐  │
-│  │                    SQLite Database (events.db)                │  │
-│  ├──────────────────────────────────────────────────────────────┤  │
-│  │                                                               │  │
-│  │  Tables:                                                      │  │
-│  │  ├─ Event                  (scraped events)                  │  │
-│  │  ├─ ScraperRun             (scraping history)                │  │
-│  │  ├─ UserProfile            (user preferences)                │  │
-│  │  ├─ FeedbackHistory        (user feedback)                   │  │
-│  │  └─ PreferenceProfileHistory (preference evolution)          │  │
-│  │                                                               │  │
-│  └──────────────────────────────────────────────────────────────┘  │
-│                                                                       │
-│  Managed by: database/models.py (SQLAlchemy ORM)                    │
-│                                                                       │
-└─────────────────────────────────────────────────────────────────────┘
+┌────────────────────────────────────────────────────────────────────┐
+│                      USER-FACING SURFACES                          │
+├────────────────────────────────────────────────────────────────────┤
+│  Web UI (server/app.py)        CLI                                 │
+│  ├─ /           event list     ├─ llm_scraper.py                   │
+│  ├─ /calendar   month grid     ├─ score_events.py                  │
+│  ├─ /profile    taste config   ├─ _test_llm_scrape.py              │
+│  ├─ /health     run history    └─ check_groq_quota.py              │
+│  ├─ /llm-usage  token/TPD                                          │
+│  └─ /feedback   👍/👎                                              │
+└────────────┬──────────────────────┬────────────────────────────────┘
+             │                      │
+             ▼                      ▼
+┌────────────────────────────────────────────────────────────────────┐
+│                      SCRAPING + LLM LAYER                          │
+├────────────────────────────────────────────────────────────────────┤
+│                                                                    │
+│   sources.py ──▶ pagination_engine.py ──▶ llm_scrape_core.py       │
+│   (SITES +         (5 pagination           (fetch, clean, chunk,   │
+│    TRIM_PATTERNS)   handlers)                ask_llm)              │
+│                                                     │              │
+│                                                     ▼              │
+│                                           llm_provider.call_llm()  │
+│                                                     │              │
+│                             ┌───────────────────────┼───────────┐  │
+│                             ▼                                   ▼  │
+│                     groq_rate_limiter.py                     Ollama│
+│                     (multi-key, per-                      (optional│
+│                      model TPM/TPD                        fallback)│
+│                      bookkeeping)                                  │
+│                             │                                      │
+│                             ▼                                      │
+│                           Groq API                                 │
+│                                                                    │
+└───────────────────────────────────┬────────────────────────────────┘
+                                    │
+                                    ▼
+┌────────────────────────────────────────────────────────────────────┐
+│                         DATA LAYER                                 │
+├────────────────────────────────────────────────────────────────────┤
+│   SQLite (events.db, WAL mode) — database/models.py                │
+│   ├─ Event                    scraped events + score + pinned      │
+│   ├─ ScraperRun               per-site run history                 │
+│   ├─ LLMCall                  every Groq/Ollama call for /llm-usage│
+│   ├─ GroqModelLimit           quota table seeded from Groq docs    │
+│   ├─ UserProfile              taste_prompt + rolling summary       │
+│   ├─ FeedbackHistory          👍/👎 by event                       │
+│   └─ PreferenceProfileHistory taste-summary evolution              │
+└────────────────────────────────────────────────────────────────────┘
 ```
 
-## Scraping Flow (Detailed)
+## Containerization
 
 ```
-USER RUNS: python llm_scraper.py fibber
+                    host :5000
+                       │
+                 ┌─────▼─────┐
+                 │    web    │◀── gunicorn, always up
+                 └─────┬─────┘
+                       │  events_data volume (SQLite, WAL)
+                       ├────────────────────────────┐
+                       ▼                            ▼
+              ┌────────────────────┐       ┌──────────────┐
+              │ scraper            │       │   ollama     │
+              │ `compose run`      │─────▶ │  (optional,  │
+              │ one-shot,          │  :11434  profile-gated)│
+              │ chromium+selenium  │       └──────────────┘
+              └─────────┬──────────┘
+                        │
+        ./debug_artifacts/ ← live scrape artifacts on host
+```
+
+Three services, one shared image:
+
+- **web** — Flask + gunicorn, always up. Serves UI and subprocess-forks `score_events.py` for the Score button.
+- **scraper** — ephemeral, profile-gated, invoked with `docker compose run --rm scraper <cmd>`. Has chromium + selenium for JS-heavy sites.
+- **ollama** — optional, profile-gated. Only needed when Groq is exhausted and `GROQ_FALLBACK_TO_OLLAMA=true`.
+
+web and scraper share `.:/app` (live code edits + artifacts visible on host) and `events_data:/data` (SQLite file). SQLite WAL is enabled at engine creation so both can safely read/write concurrently.
+
+## Scraping Flow
+
+```
+python llm_scraper.py fibber
 │
-├─▶ llm_scraper.py main()
-│   │
-│   ├─ Parse CLI args
-│   ├─ Load SITES from sources.py
-│   ├─ Create DB session
-│   │
-│   └─▶ For each site:
+├─▶ main()
+│   ├─ Parse CLI args, resolve {today}/{plus90} in base URL
+│   ├─ Purge existing events (preserves pinned)
+│   └─▶ for each key:
 │       │
-│       ├─ Extract config: (name, url, use_selenium, wait, max_pages, note, color, pagination_config)
-│       │
-│       └─▶ scrape_and_save(key, name, url, use_selenium, wait, max_pages, pagination_config, session)
+│       └─▶ scrape_and_save(key, ...)
 │           │
 │           ├─▶ pagination_engine.scrape_with_pagination()
 │           │   │
-│           │   ├─ Determine pagination type from config
-│           │   │  ├─ None or 'llm' → LLM extracts next_page_url
-│           │   │  ├─ 'multi_month' → Generate month URLs
-│           │   │  ├─ 'url_param' → Increment ?page=N
-│           │   │  ├─ 'js_button' → Click Next button
-│           │   │  └─ 'calendar_grid' → Month grid + date injection
+│           │   ├─ Dispatch on pagination type:
+│           │   │   ├─ None / 'llm'      LLM finds next_page_url
+│           │   │   ├─ 'multi_month'     generate month URLs
+│           │   │   ├─ 'url_param'       increment ?page=N
+│           │   │   ├─ 'js_button'       Selenium clicks Next
+│           │   │   └─ 'calendar_grid'   month grid + date injection
 │           │   │
-│           │   ├─▶ For each page:
-│           │   │   │
-│           │   │   ├─▶ fetch_selenium() or fetch_requests()
-│           │   │   │   └─ Returns: raw HTML
-│           │   │   │
-│           │   │   ├─▶ clean_html(html)
-│           │   │   │   ├─ Remove scripts, styles, nav, footer
-│           │   │   │   ├─ Inline links as "Text [/url]"
-│           │   │   │   └─ Returns: clean text
-│           │   │   │
-│           │   │   ├─▶ apply_trim(text, key)
-│           │   │   │   ├─ Looks up TRIM_PATTERNS[key] in sources.py
-│           │   │   │   ├─ Strips nav menus, filter sidebars, cookie banners
-│           │   │   │   └─ Cuts 15-76% of tokens on most sites
-│           │   │   │
-│           │   │   ├─▶ ask_llm(text, url, site_hint)
-│           │   │   │   ├─ Send to Groq API
-│           │   │   │   ├─ Chunk if > 6000 chars
-│           │   │   │   ├─ Extract structured JSON
-│           │   │   │   └─ Returns: {events: [...], next_page_url: "..."}
-│           │   │   │
-│           │   │   └─ Collect events
-│           │   │
-│           │   └─ Returns: all_events list
+│           │   └─▶ for each page:
+│           │       ├─ fetch_requests() or fetch_selenium()
+│           │       ├─ clean_html()          strip <script>/<nav>/etc.
+│           │       ├─ apply_trim()          strip site-specific boilerplate
+│           │       ├─ artifact_store.save() live debug_artifacts write
+│           │       ├─ chunk if >6000 chars
+│           │       └─ ask_llm() → call_llm() → Groq (→ Ollama on 429/exhaustion)
 │           │
-│           ├─▶ For each event in all_events:
-│           │   │
-│           │   ├─ parse_date(date_str, time_str)
-│           │   ├─ Check if exists in DB (by title + date)
-│           │   ├─ If new:
-│           │   │   └─ session.add(Event(...))
-│           │   │
-│           │   └─ events_added++
-│           │
-│           ├─ session.commit()
-│           │
-│           └─ Returns: (events_found, events_added, success, error_message)
+│           ├─ parse_date() per event (YYYY-MM-DD + sentinel 12:34 fallback)
+│           ├─ Skip past events (except ongoing date ranges)
+│           ├─ Dedup by (title, date)
+│           └─ Commit Event rows + append ScraperRun
 │
-└─▶ Print summary
-    Close driver
-    Close session
+└─▶ print summary, close driver
 ```
 
-## Pagination Type Decision Tree
+Scoring is a **separate path**, not called from `scrape_and_save`. That's deliberate (see Intentional Decisions below).
+
+## Pagination Types
+
+| Type | Sites that use it | What it does |
+|---|---|---|
+| `None` (LLM) | `fibber`, `rak`, `scottsdale`, `tempe_lib`, `chandler_center`, many others | LLM extracts next_page_url from page text |
+| `multi_month` | `dirtydrummer`, `sweet_basil` | Generate N month URLs from a template |
+| `url_param` | `chandler` (0-indexed), `chandler_lib`, `mesa` | Increment `?page=N` in URL |
+| `js_button` | `phoenix`, `azmnh`, `az_worm_farm` | Selenium clicks Next between pages |
+| `calendar_grid` | `gilbert`, `tca` | Month-view grid with injected full dates for LLM context |
+
+## LLM Layer
+
+Everything that calls an LLM — scraping, scoring, preference summaries — goes through **`llm_provider.call_llm()`**. It selects between Groq and Ollama based on `config.LLM_PROVIDER` and per-call overrides, records every call in the `llm_calls` table, and delegates rate limit bookkeeping to `groq_rate_limiter.py`.
+
+**groq_rate_limiter.py** tracks per-(key, model) state:
+- TPM (per-minute tokens) and TPD (per-day tokens) budgets read from `GroqModelLimit` table
+- Multiple keys rotate combinatorially: tries all keys with model[0] first, then all keys with model[1], etc.
+- On a 429, parses the error body, cross-references with our local `llm_calls` history to classify TPM vs TPD exhaustion, and blocks that specific (key, model) pair for the right duration.
+- When all (key, model) combinations are exhausted AND `GROQ_FALLBACK_TO_OLLAMA=true`, falls through to Ollama.
+
+This is why scraping and scoring share the rate limiter — a quota burn in one path correctly blocks the other.
+
+## Scoring Path
 
 ```
-                        ┌─────────────────────┐
-                        │  Site Config in     │
-                        │    sources.py       │
-                        └──────────┬──────────┘
-                                   │
-                                   ▼
-                    ┌──────────────────────────┐
-                    │ pagination_config set?   │
-                    └──────────┬───────────────┘
-                               │
-                ┌──────────────┴──────────────┐
-                │                             │
-               NO                            YES
-                │                             │
-                ▼                             ▼
-        ┌───────────────┐          ┌──────────────────┐
-        │  Use 'llm'    │          │ Check 'type' key │
-        │  (default)    │          └────────┬─────────┘
-        └───────────────┘                   │
-                │                           │
-                │         ┌─────────────────┼─────────────────┬─────────────────┐
-                │         │                 │                 │                 │
-                ▼         ▼                 ▼                 ▼                 ▼
-        ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────┐  ┌──────────────┐
-        │   llm    │  │multi_month│  │url_param │  │js_button │  │calendar_grid │
-        └────┬─────┘  └─────┬─────┘  └─────┬────┘  └─────┬────┘  └──────┬───────┘
-             │              │              │             │               │
-             ▼              ▼              ▼             ▼               ▼
-    ┌────────────┐  ┌────────────┐ ┌────────────┐ ┌──────────┐ ┌──────────────┐
-    │LLM extracts│  │Generate N  │ │Increment   │ │Click Next│ │Month URLs +  │
-    │next_page   │  │month URLs  │ │?page=N     │ │button in │ │date injection│
-    │URL from    │  │from        │ │parameter   │ │JavaScript│ │for LLM       │
-    │page content│  │template    │ │in URL      │ │          │ │context       │
-    └────────────┘  └────────────┘ └────────────┘ └──────────┘ └──────────────┘
+python score_events.py [--all]
+│
+└─▶ recommender.llm_filter.run_batch_scoring(rescore_all)
+    │
+    ├─ Load UserProfile (taste_prompt + preference_summary)
+    ├─ Query Event rows (score IS NULL, or all future with --all)
+    ├─ Chunk into batches of SCORING_CHUNK_SIZE
+    │
+    └─▶ for each batch:
+        ├─ Build prompt: profile + events JSON + 0.0–1.0 scoring rubric
+        ├─ llm_provider.call_llm(call_type='scoring')
+        ├─ Parse JSON array, update Event.score in place
+        └─ Commit per batch (failures don't lose the whole run)
 ```
 
-## Configuration-Driven Design
-
-### Adding a New Scraper (5 minutes)
-
-```
-1. Open sources.py
-   │
-   ├─▶ Find SITES dict
-   │
-   └─▶ Add new entry:
-       
-       'mysite': (
-           'My Site Name',                    # Display name
-           'https://mysite.com/events',       # URL
-           True,                              # Use Selenium?
-           5,                                 # Wait seconds
-           5,                                 # Max pages
-           'Optional note',                   # Notes
-           ('#fff', '#000', '#333'),          # Colors (bg, border, text)
-           None,                              # Pagination config (or dict)
-       ),
-
-2. Choose pagination type:
-   │
-   ├─ None → LLM pagination (works for most sites)
-   │
-   ├─ {'type': 'multi_month', 'months': 3, 'url_template': '...'}
-   │
-   ├─ {'type': 'url_param', 'param_name': 'page', 'start_index': 1}
-   │
-   ├─ {'type': 'js_button', 'button_selector': 'a.next'}
-   │
-   └─ {'type': 'calendar_grid', 'months': 3, 'url_template': '...'}
-
-3. Test:
-   python llm_scraper.py mysite
-
-4. Done!
-```
-
-## Data Flow: Event Lifecycle
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         EVENT LIFECYCLE                              │
-└─────────────────────────────────────────────────────────────────────┘
-
-1. SCRAPING
-   │
-   ├─▶ HTML fetched from source website
-   │   └─ Via requests (static) or Selenium (JavaScript)
-   │
-   ├─▶ HTML cleaned and sent to LLM
-   │   └─ Groq API extracts structured event data
-   │
-   └─▶ Event saved to database
-       └─ Table: Event (title, date, venue, url, source, description)
-
-2. SCORING (MANUAL batch process — NOT auto-triggered by scraping)
-   │
-   ├─▶ python score_events.py          # score only events where Event.score IS NULL
-   ├─▶ python score_events.py --all    # re-score every future event (after profile change)
-   │
-   │   NOTE: llm_scraper.py does NOT call this. Changing the taste profile does NOT
-   │         call this. Feedback does NOT call this. You run it yourself.
-   │
-   ├─▶ Uses the same llm_provider.call_llm() path as scraping, so it benefits from
-   │   the multi-key Groq rate limiter, 429 classification, and Ollama fallback.
-   │
-   ├─▶ For each chunked batch of events:
-   │   │
-   │   ├─ Load user preferences from UserProfile (taste_prompt + preference_summary)
-   │   ├─ Send chunk + profile to LLM via call_llm(call_type='scoring')
-   │   └─ LLM returns per-event relevance scores (0.0 - 1.0)
-   │
-   └─▶ Event.score updated in database (committed after each chunk)
-
-3. USER INTERACTION (web interface)
-   │
-   ├─▶ User views events at http://localhost:5000
-   │   └─ Events sorted by score (highest first)
-   │
-   ├─▶ User provides feedback (interested/not interested)
-   │   ├─ Saved to FeedbackHistory table
-   │   └─ UserProfile updated with new preferences
-   │
-   └─▶ User pins events to short list
-       └─ Event.pinned = True
-
-4. PREFERENCE LEARNING
-   │
-   └─▶ As user provides feedback:
-       │
-       ├─ LLM analyzes feedback patterns
-       ├─ Generates preference summary
-       ├─ Updates UserProfile
-       └─ Future scores reflect learned preferences
-```
+`/profile` feedback updates `UserProfile.preference_summary` automatically after every 10 thumbs-up/down (`SUMMARY_THRESHOLD`), but **does not trigger rescoring**. Run `score_events.py --all` yourself when you want the new summary to reshape scores.
 
 ## Component Responsibilities
 
-### sources.py
-**Role:** Single source of truth for all scraper configurations
+| File | Role |
+|---|---|
+| `sources.py` | Single source of truth: `SITES` dict + `TRIM_PATTERNS` dict. Add a scraper by editing this file only. |
+| `pagination_engine.py` | 5 pagination handlers + `scrape_with_pagination()` entry point. Dispatches by `pagination_config['type']`. |
+| `llm_scrape_core.py` | `fetch_requests()`, `fetch_selenium()`, `clean_html()`, `apply_trim()`, `ask_llm()`, driver lifecycle. |
+| `artifact_store.py` | Writes raw HTML + cleaned text to `debug_artifacts/<key>/` on every scrape. |
+| `llm_scraper.py` | CLI entry point, date parsing, dedup, DB persistence, ScraperRun logging. |
+| `llm_provider.py` | `call_llm()` — unified Groq/Ollama entry point, records to `llm_calls`. |
+| `groq_rate_limiter.py` | Per-(key, model) TPM/TPD bookkeeping, 429 classification, fallback logic. |
+| `database/models.py` | SQLAlchemy models + engine setup + WAL bootstrap + seed data. |
+| `recommender/llm_filter.py` | `run_batch_scoring()`, `score_events()` (read-only for UI), `maybe_update_preference_summary()`. |
+| `server/app.py` | Flask routes: event list, calendar, profile, health, llm-usage, feedback, pin, score subprocess. |
+| `wsgi.py` | gunicorn entry point (`app` export). |
+| `config.py` | Env-driven config: API keys, DB URL, Ollama URL, chunking params, retry/backoff. |
 
-**Contains:**
-- `SITES` dict with all 23 site configurations
-- Each entry: (name, url, use_selenium, wait, max_pages, note, color, pagination_config)
-- `TRIM_PATTERNS` dict -- one entry per site, strips nav/filter boilerplate before LLM
-- `SOURCE_NAMES` and `SOURCE_COLORS` derived dicts for UI
+## Intentional Decisions
 
-**Used by:** llm_scraper.py, server/app.py, pagination_engine.py
+- **Scoring is manual.** `llm_scraper.py` doesn't call `run_batch_scoring()`, and profile edits don't retroactively rescore. Keeps scrape-path and scoring-path rate-limit issues from cascading.
+- **No `max_tokens` on Groq calls.** Groq validates `prompt + max_tokens ≤ TPM` before running. We can't know prompt size upfront, so any fixed value risks truncation (too low) or TPM rejection (too high). Ollama is exempt — it has no TPM and needs `OLLAMA_MAX_TOKENS=16384` explicitly because its default is too small.
+- **Sentinel time `12:34`** marks events with no specified time. Used throughout date logic; no real event would ever land on exactly this minute.
+- **All scraper config in `sources.py`** (both `SITES` and `TRIM_PATTERNS`). Avoids custom-code sprawl per-site; keeps per-site config reviewable at a glance.
+- **SQLite, not Postgres.** Single-user tool. WAL + one writer + multiple readers handles the web/scraper split cleanly. Switching would add a service + migrations + backup story for zero real benefit.
+- **Groq first, Ollama optional.** Groq is fast and the free tier covers normal usage. Ollama is only needed when both Groq keys are daily-exhausted, so it lives behind a compose profile.
+- **`.:/app` bind mount.** Lets code edits apply without rebuilding, and makes every scrape's `debug_artifacts/` live on the host filesystem automatically.
 
----
+## Data Flow Summary
 
-### pagination_engine.py
-**Role:** Configuration-driven pagination execution
+```
+1. SCRAPE   → HTML → clean text → LLM extraction → Event row (score=NULL)
+2. SCORE    → Event rows + profile → LLM batch → Event.score updated
+3. DISPLAY  → UI reads Event rows sorted by score
+4. FEEDBACK → 👍/👎 → FeedbackHistory row → after 10, regenerate preference_summary
+5. PROFILE EDIT → UserProfile updated → you run score_events.py --all to propagate
+```
 
-**Contains:**
-- 5 pagination handlers (generators that yield page data)
-- `_HANDLERS` registry mapping type names to functions
-- `scrape_with_pagination()` main entry point
+## Adding a New Source (summary)
 
-**Handlers:**
-1. `_paginate_multi_month()` - Generate month-based URLs
-2. `_paginate_url_param()` - Increment URL parameters
-3. `_paginate_js_button()` - Click JavaScript buttons
-4. `_paginate_calendar_grid()` - Month grids with date injection
-5. LLM pagination (inline in main function)
+1. Add `SITES[<key>]` tuple and `TRIM_PATTERNS[<key>]` in `sources.py`.
+2. `docker compose run --rm scraper python _collect_artifacts.py` (or bare-Python equivalent).
+3. Inspect `debug_artifacts/<key>/page_1_cleaned.txt` to verify trim pattern.
+4. `docker compose run --rm scraper python llm_scraper.py <key>`.
 
-**Used by:** llm_scraper.py
+Full walkthrough with trim-pattern research in `HOW_TO_ADD_SCRAPERS.md`.
 
----
+## Debugging
 
-### llm_scrape_core.py
-**Role:** Low-level scraping utilities (no site-specific logic)
+Step-by-step pipeline tools, each stopping at a different stage:
 
-**Contains:**
-- `fetch_requests()` - Fetch static HTML
-- `fetch_selenium()` - Fetch JavaScript-rendered pages
-- `clean_html()` - Strip HTML to clean text
-- `apply_trim()` - Strip site-specific boilerplate using TRIM_PATTERNS from sources.py
-- `ask_llm()` - Send text to Groq, get structured events
-- `get_driver()` / `close_driver()` - Selenium management
-
-**Used by:** pagination_engine.py
-
----
-
-### llm_scraper.py
-**Role:** Production scraper entry point with DB persistence
-
-**Contains:**
-- `parse_date()` - Convert LLM date strings to datetime
-- `scrape_and_save()` - Thin wrapper around pagination engine + DB save
-- `main()` - CLI argument parsing and orchestration
-
-**Usage:**
 ```bash
-python llm_scraper.py              # Scrape all sites
-python llm_scraper.py fibber mesa  # Scrape specific sites
-python llm_scraper.py list         # List all sites
-python llm_scraper.py --no-purge   # Append without deleting
+python3 debug_fetch.py <key>       # raw HTML, bot-block checks
+python3 debug_clean.py <key>       # cleaned text, tag stats, trim impact
+python3 debug_chunk.py <key>       # chunk visualization
+python3 debug_llm.py <key>         # LLM call (or --dry-run)
+python3 debug_pipeline.py <key>    # full pipeline with interactive pauses
+python3 debug_source.py <key>      # config inspection (no fetch)
 ```
 
----
+All of these use `debug_utils.py` and write to the same `debug_artifacts/<key>/` as production scrapes.
 
-### database/models.py
-**Role:** SQLAlchemy ORM models
+## Observability
 
-**Tables:**
-- `Event` - Scraped events (title, date, venue, url, source, score, pinned)
-- `ScraperRun` - Scraping history (source, timestamp, events_found, success)
-- `UserProfile` - User preferences (summary text)
-- `FeedbackHistory` - User feedback (event_id, interested, timestamp)
-- `PreferenceProfileHistory` - Preference evolution over time
-
----
-
-### recommender/llm_filter.py
-**Role:** LLM-based event scoring and preference learning
-
-**Contains:**
-- `run_batch_scoring(rescore_all=False)` - Score events in chunks via Groq; default
-  fills only NULL scores, `rescore_all=True` re-scores every future event
-- `score_events()` - Read-only helper that returns (event, cached_score) tuples for the web UI
-- `maybe_update_preference_summary()` - Rebuild rolling preference summary from recent feedback
-- Groq calls go through `llm_provider.call_llm()`, so they share the same multi-key
-  rate limiter as scraping
-
-**Usage:**
-```bash
-python score_events.py          # Score only unscored events — manual step, not automatic
-python score_events.py --all    # Re-score every future event (use after profile edits)
-```
-
-**Important:** Nothing in the scrape pipeline calls this. Scoring is always a
-separate manual step.
-
----
-
-### server/app.py
-**Role:** Flask web interface
-
-**Routes:**
-- `/` - Event list (sorted by score)
-- `/calendar` - Monthly calendar view
-- `/profile` - User preferences page
-- `/profile/summary` - Generate preference summary
-- `/health` - Scraper health dashboard
-- `/feedback` - Submit interested/not interested
-- `/pin` - Toggle event pinned status
-
-**Usage:**
-```bash
-python server/app.py
-# Visit http://localhost:5000
-```
-
-## Technology Stack
-
-```
-┌─────────────────────────────────────────────────────────────────────┐
-│                         TECHNOLOGY LAYERS                            │
-├─────────────────────────────────────────────────────────────────────┤
-│                                                                       │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                    PRESENTATION LAYER                        │   │
-│  ├─────────────────────────────────────────────────────────────┤   │
-│  │  Flask 3.0+ (Web Framework)                                 │   │
-│  │  Jinja2 Templates (HTML rendering)                          │   │
-│  │  Bootstrap/CSS (UI styling)                                 │   │
-│  └─────────────────────────────────────────────────────────────┘   │
-│                                                                       │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                    APPLICATION LAYER                         │   │
-│  ├─────────────────────────────────────────────────────────────┤   │
-│  │  Python 3.x                                                  │   │
-│  │  Configuration-driven pagination engine                     │   │
-│  │  LLM-based event extraction & scoring                       │   │
-│  └─────────────────────────────────────────────────────────────┘   │
-│                                                                       │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                    SCRAPING LAYER                            │   │
-│  ├─────────────────────────────────────────────────────────────┤   │
-│  │  Selenium 4.15+ (JavaScript-heavy sites)                    │   │
-│  │  Requests (Static HTML sites)                               │   │
-│  │  BeautifulSoup4 (HTML parsing)                              │   │
-│  │  ChromeDriver (Headless browser)                            │   │
-│  └─────────────────────────────────────────────────────────────┘   │
-│                                                                       │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                    AI/LLM LAYER                              │   │
-│  ├─────────────────────────────────────────────────────────────┤   │
-│  │  Groq API (llama-3.3-70b-versatile)                         │   │
-│  │  - Event extraction from HTML                               │   │
-│  │  - Pagination URL detection                                 │   │
-│  │  - Event relevance scoring                                  │   │
-│  │  - Preference learning                                      │   │
-│  └─────────────────────────────────────────────────────────────┘   │
-│                                                                       │
-│  ┌─────────────────────────────────────────────────────────────┐   │
-│  │                    DATA LAYER                                │   │
-│  ├─────────────────────────────────────────────────────────────┤   │
-│  │  SQLite (Database)                                           │   │
-│  │  SQLAlchemy 2.0+ (ORM)                                       │   │
-│  │  python-dotenv (Environment config)                          │   │
-│  └─────────────────────────────────────────────────────────────┘   │
-│                                                                       │
-└─────────────────────────────────────────────────────────────────────┘
-```
-
-## Key Design Principles
-
-### 1. Configuration Over Code
-- Add new scrapers by editing config, not writing code
-- Pagination behavior defined declaratively
-- Easy to maintain without AI assistance
-
-### 2. Separation of Concerns
-- `sources.py` - Configuration
-- `pagination_engine.py` - Pagination logic
-- `llm_scrape_core.py` - Low-level utilities
-- `llm_scraper.py` - Orchestration + persistence
-
-### 3. LLM-First Approach
-- LLM extracts events from any HTML structure
-- No brittle CSS selectors
-- Resilient to website redesigns
-
-### 4. Fail-Safe Design
-- Retry logic for API failures
-- Graceful degradation on errors
-- Comprehensive error logging
-
-### 5. User Privacy
-- All data stored locally (SQLite)
-- No external tracking
-- User controls all preferences
-
-## Performance Characteristics
-
-### Scraping Speed
-- Static sites (requests): ~2-5 seconds per page
-- JavaScript sites (Selenium): ~8-15 seconds per page
-- LLM extraction: ~5-10 seconds per page (with chunking)
-
-### Typical Scrape Times
-- Single site: 30-60 seconds
-- All 21 sites: 15-30 minutes
-- Depends on: page count, Selenium usage, LLM API speed
-
-### API Usage
-- Groq API: ~1-3 calls per page (with chunking)
-- Rate limits: Handled with retry + backoff
-- Daily token (TPD) monitoring: `/llm-usage` dashboard (rolling 24h from DB -- authoritative)
-- Per-minute token (TPM) / daily request (RPD) check: `python check_groq_quota.py` (does NOT show daily tokens)
-
-## Security Considerations
-
-### Bot Detection Mitigation
-- User-agent spoofing via CDP
-- Fresh Selenium sessions per site
-- Configurable wait times
-- SSL verification disabled
-
-### Data Security
-- API keys in `.env` (not in git)
-- Local SQLite database
-- No external data transmission (except Groq API)
-
-### Input Validation
-- URL validation before scraping
-- Date parsing with fallbacks
-- SQL injection prevention (SQLAlchemy ORM)
-
-## Maintenance Guide
-
-### Adding a New Site
-1. Edit `sources.py`
-2. Add entry to `SITES` dict (name, url, selenium, wait, max_pages, note, color, pagination_config)
-3. Collect artifact: `python3 _collect_artifacts.py`
-4. Inspect `debug_artifacts/<key>/page_1_cleaned.txt` to find trim pattern
-5. Add entry to `TRIM_PATTERNS` dict in same file (or `None` if no boilerplate)
-6. Test: `python llm_scraper.py <key>`
-
-See `HOW_TO_ADD_SCRAPERS.md` for full details.
-
-### Debugging a Scraper
-1. Test individually: `python llm_scraper.py <key>`
-2. Check raw HTML: `python _test_llm_scrape.py <key> --dump`
-3. Adjust wait time or pagination config
-4. Check health dashboard: http://localhost:5000/health
-
-### Updating Pagination Logic
-1. Edit handler in `pagination_engine.py`
-2. Test affected sites
-3. Update documentation
-
-### Database Migrations
-- SQLAlchemy handles schema automatically
-- Backup `events.db` before major changes
-- No migration framework needed (simple schema)
-
-## Future Enhancements
-
-### Potential Improvements
-- [ ] Add more pagination types as needed
-- [ ] Implement caching for frequently scraped pages
-- [ ] Add email notifications for new events
-- [ ] Export events to calendar formats (iCal)
-- [ ] Mobile-responsive web interface
-- [ ] Multi-user support
-- [ ] Event deduplication across sources
-
-### Scalability Considerations
-- Current design: Single-user, local deployment
-- For multi-user: Add authentication, user isolation
-- For scale: Consider PostgreSQL, Redis caching, async scraping
+- **`/health`** — per-source run success, last-run timestamp, event counts, recent failures.
+- **`/llm-usage`** — rolling 24h token usage per (key, model), budget cards with TPD %, Chart.js usage graph, recent call log, recent 429/error log. Authoritative for "is my daily token budget exhausted?" since Groq doesn't expose TPD in API headers.
+- **`check_groq_quota.py`** — per-minute TPM and daily RPD from Groq's API headers only. Does NOT show daily tokens. Useful for per-minute state but misleading for daily-budget debugging.
+- **console logs** — chunk failures (400s, "max completion tokens") are logged here but NOT written to the DB, so they're invisible on `/llm-usage`. A scrape that "succeeded" may have silently lost a chunk. Watch for `chunk X/Y failed`.

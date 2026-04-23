@@ -114,7 +114,7 @@ Most sites prepend nav menus, filter sidebars, category dropdowns, or cookie con
 
 ### How trim patterns were derived
 
-For each of the 23 sites, `_collect_artifacts.py` fetched and cleaned page 1, saving to `debug_artifacts/<key>/page_1_cleaned.txt`. Each artifact was inspected manually to find the last line of boilerplate before the first event entry. Patterns were verified to appear exactly once in the artifact.
+For each site (32 as of this writing), `_collect_artifacts.py` fetches and cleans page 1, saving to `debug_artifacts/<key>/page_1_cleaned.txt`. Each artifact was inspected manually to find the last line of boilerplate before the first event entry. Patterns were verified to appear exactly once in the artifact.
 
 ### Impact by site
 
