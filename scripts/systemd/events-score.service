@@ -1,0 +1,10 @@
+[Unit]
+Description=Weekly batch scoring of unscored events
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/event_tracker
+ExecStart=/home/ubuntu/event_tracker/scripts/weekly_score.sh

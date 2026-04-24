@@ -1,0 +1,10 @@
+[Unit]
+Description=Daily rotating scraper (1/7 of sources per day)
+After=network-online.target docker.service
+Wants=network-online.target
+
+[Service]
+Type=oneshot
+User=ubuntu
+WorkingDirectory=/home/ubuntu/event_tracker
+ExecStart=/home/ubuntu/event_tracker/scripts/weekly_scrape.sh
