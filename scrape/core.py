@@ -115,6 +115,34 @@ def clean_html(html: str) -> str:
 # Text chunking
 # ---------------------------------------------------------------------------
 
+def _recover_partial_json(s: str) -> dict | None:
+    """
+    Salvage a Groq `json_validate_failed` (400) response by trimming back to the
+    last complete event in the events array.
+
+    Why: with no `max_tokens` set, the model occasionally hits its default cap
+    mid-string. Groq's JSON-mode validator rejects the truncated output with 400,
+    but returns the partial text in `failed_generation`. Most chunks already
+    contain several complete events before the cutoff; this recovers them so the
+    chunk isn't a total loss.
+    """
+    if not s:
+        return None
+    try:
+        return json.loads(s)
+    except json.JSONDecodeError:
+        pass
+    # Truncate after the last complete `}` followed by `,` (end of one event,
+    # before the next) and close the array + root object.
+    cut = s.rfind('},')
+    if cut == -1:
+        return None
+    try:
+        return json.loads(s[:cut + 1] + ']}')
+    except json.JSONDecodeError:
+        return None
+
+
 def _chunk_text(text: str):
     """
     Split text into overlapping windows for multi-call extraction.
@@ -229,6 +257,16 @@ def _ask_llm_single(
         except openai.RateLimitError:
             # Rate limiting is handled inside call_llm() (key switching + waiting).
             # If we get here, all keys are exhausted and no fallback succeeded.
+            raise
+        except openai.BadRequestError as e:
+            body = getattr(e, 'body', None) or {}
+            failed_gen = body.get('error', {}).get('failed_generation') if isinstance(body, dict) else None
+            recovered = _recover_partial_json(failed_gen) if failed_gen else None
+            if recovered and recovered.get('events'):
+                n = len(recovered['events'])
+                log.warning(f"json_validate_failed: salvaged {n} events from partial response")
+                print(f"\n    json_validate_failed: salvaged {n} events from partial response")
+                return recovered
             raise
         except Exception as e:
             err = str(e)

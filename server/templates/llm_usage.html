@@ -361,7 +361,7 @@
 
 </div>
 {% if chart_labels %}
-<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+<script src="{{ url_for('static', filename='chart.umd.min.js') }}"></script>
 <script>
 const palette = ['#1976D2','#10b981','#f59e0b','#ef4444','#8b5cf6','#06b6d4','#ec4899'];
 const datasets = {{ chart_datasets | tojson }}.map((ds, i) => ({
