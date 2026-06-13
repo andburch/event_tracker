@@ -95,9 +95,9 @@ Scoring is **manual** in both setups — `llm_scraper.py` doesn't trigger it, an
 
 ## Event Sources
 
-32 sources covering music venues, cities, libraries, museums, arts centers, and assorted hobby clubs around Phoenix:
+31 sources covering music venues, cities, libraries, museums, arts centers, and assorted hobby clubs around Phoenix:
 
-`fibber`, `dirtydrummer`, `yuccatap`, `rak`, `chandler`, `scottsdale`, `gilbert`, `phoenix`, `mesa`, `chandler_lib`, `tempe_lib`, `azmnh`, `chandler_center`, `mesa_arts`, `scottsdale_arts`, `asu_kerr`, `tca`, `downtown_tempe`, `dbg`, `odysea`, `hale_theatre`, `az_mushroom`, `az_worm_farm`, `backcountry_hunters`, `changing_hands`, `farm_south_mtn`, `summerwinds`, `valley_bar`, `sleepy_whale`, `sweet_basil`, `evac`, `az_flycasters`
+`fibber`, `dirtydrummer`, `yuccatap`, `rak`, `chandler`, `scottsdale`, `gilbert`, `phoenix`, `mesa`, `chandler_lib`, `tempe_lib`, `azmnh`, `chandler_center`, `mesa_arts`, `scottsdale_arts`, `asu_kerr`, `tca`, `downtown_tempe`, `dbg`, `odysea`, `az_mushroom`, `az_worm_farm`, `backcountry_hunters`, `changing_hands`, `farm_south_mtn`, `summerwinds`, `valley_bar`, `sleepy_whale`, `sweet_basil`, `evac`, `az_flycasters`
 
 Run `python llm_scraper.py list` (or `docker compose run --rm scraper python llm_scraper.py list`) for the full table with URLs and pagination flags.
 
@@ -168,7 +168,7 @@ debug_artifacts/        # live scrape artifacts (bind-mounted in Docker)
 
 **Akamai / bot detection** — Gilbert and Scottsdale Arts use Akamai; occasional failure is probabilistic. Longer `wait_secs` and fresh Selenium sessions help.
 
-**Rate limit errors (429)** — Groq free tier has per-minute (TPM) and per-day (TPD) token limits. Per-minute info is in `tools/tools/check_groq_quota.py`, but daily token usage is only visible on `/llm-usage` (Groq doesn't expose daily tokens in API headers). Add a second Groq key as `GROQ_API_KEY_2` in `.env` to double the combined quota.
+**Rate limit errors (429)** — Groq free tier has per-minute (TPM) and per-day (TPD) token limits. Per-minute info is in `tools/check_groq_quota.py`, but daily token usage is only visible on `/llm-usage` (Groq doesn't expose daily tokens in API headers). Add a second Groq key as `GROQ_API_KEY_2` in `.env` to double the combined quota.
 
 **Scoring seems frozen** — scoring is manual. After scraping, run `score_events.py`. After changing your profile, run `score_events.py --all`.
 

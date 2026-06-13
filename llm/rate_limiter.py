@@ -48,6 +48,7 @@ import logging
 from datetime import datetime, timedelta
 
 import config
+from database.models import utcnow
 
 log = logging.getLogger(__name__)
 
@@ -366,7 +367,7 @@ class GroqRateLimiter:
         try:
             from database.models import Session, LLMCall
             from sqlalchemy import func
-            now = datetime.utcnow()
+            now = utcnow()
             s = Session()
             try:
                 def _sum(since):

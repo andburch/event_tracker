@@ -26,6 +26,7 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from database.models import (
     Session, Event, FeedbackHistory, UserProfile,
     PreferenceProfileHistory, ScraperRun, LLMCall, GroqModelLimit, GroqRateLimitEvent,
+    utcnow,
 )
 from recommender.llm_filter import score_events, get_profile, maybe_update_preference_summary
 from datetime import datetime, timedelta, date
@@ -43,7 +44,7 @@ app = Flask(__name__)
 # so we can convert to/from UTC with a fixed 7h offset without pytz or
 # zoneinfo. All metadata timestamps in the database (llm_calls, scraper_runs,
 # feedback_history, preference_profile_history, groq_rate_limit_events, etc.)
-# are stored as naive UTC via datetime.utcnow(); the UI converts them to
+# are stored as naive UTC via utcnow(); the UI converts them to
 # Phoenix local time for display via the phoenix_time Jinja filter.
 #
 # NOTE: Event.date is a SEPARATE concept — those values are Phoenix local
@@ -66,7 +67,7 @@ def utc_to_phoenix(dt: datetime) -> datetime:
 
 def phoenix_now() -> datetime:
     """Return the current time as a naive Phoenix datetime."""
-    return datetime.utcnow() - _PHOENIX_UTC_OFFSET
+    return utcnow() - _PHOENIX_UTC_OFFSET
 
 
 def phoenix_time_filter(dt: datetime, fmt: str = '%Y-%m-%d %H:%M:%S') -> str:
@@ -175,7 +176,7 @@ def events_to_ics(events, calendar_name: str = 'Phoenix Events') -> str:
     The returned string is ready to be served with
     `Content-Type: text/calendar`.
     """
-    now_utc_stamp = datetime.utcnow().strftime('%Y%m%dT%H%M%SZ')
+    now_utc_stamp = utcnow().strftime('%Y%m%dT%H%M%SZ')
 
     lines = [
         'BEGIN:VCALENDAR',
@@ -259,8 +260,14 @@ def index():
         end_date   = request.args.get('end_date', '')
         sort_by    = request.args.get('sort', 'date')
 
-        # Base query: only future events
-        query = session.query(Event).filter(Event.date >= datetime.now())
+        # Base query: events from the start of today onward.
+        # Floor at midnight (not datetime.now()) so today's events stay visible
+        # all day and match the calendar's per-day grouping. Using now() would
+        # silently drop events whose start time already passed today — including
+        # the 12:34 sentinel "no specified time" events, which have unknown times
+        # and shouldn't disappear just because 12:34 PM is in the past.
+        today_start = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+        query = session.query(Event).filter(Event.date >= today_start)
 
         # Apply optional filters
         if selected_sources:
@@ -284,7 +291,7 @@ def index():
         # Pinned events (shortlist) — always shown regardless of filters
         pinned_events = session.query(Event).filter(
             Event.pinned == True,
-            Event.date >= datetime.now(),
+            Event.date >= today_start,
         ).order_by(Event.date).all()
 
         # Build source list sorted alphabetically by display name for the filter dropdown
@@ -739,7 +746,7 @@ def llm_usage():
     """
     session = Session()
     try:
-        now      = datetime.utcnow()
+        now      = utcnow()
         day_ago  = now - timedelta(hours=24)
         week_ago = now - timedelta(days=7)
 

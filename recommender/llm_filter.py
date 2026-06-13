@@ -29,6 +29,7 @@ from openai import RateLimitError, APIStatusError
 from datetime import datetime
 import config
 from llm.provider import call_llm, is_available
+from database.models import utcnow
 
 log = logging.getLogger(__name__)
 
@@ -375,7 +376,7 @@ def maybe_update_preference_summary(provider: str = None) -> None:
 
             profile.preference_summary             = new_summary
             profile.feedback_count_at_last_summary = total_feedback
-            profile.last_summarized_at             = datetime.utcnow()
+            profile.last_summarized_at             = utcnow()
             session.commit()
             print("Preference summary updated.")
             log.info("Preference summary updated.")

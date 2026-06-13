@@ -1,6 +1,6 @@
 # Phoenix Events Recommender — Architecture
 
-A configuration-driven event aggregator that scrapes 32 Phoenix Valley sources, stores them in SQLite, and ranks them by personal preference with an LLM.
+A configuration-driven event aggregator that scrapes 31 Phoenix Valley sources, stores them in SQLite, and ranks them by personal preference with an LLM.
 
 ## System Overview
 
@@ -12,7 +12,7 @@ A configuration-driven event aggregator that scrapes 32 Phoenix Valley sources, 
 │  ├─ /           event list     ├─ llm_scraper.py                   │
 │  ├─ /calendar   month grid     ├─ score_events.py                  │
 │  ├─ /profile    taste config   ├─ tools/test_scraper.py            │
-│  ├─ /health     run history    └─ tools/tools/check_groq_quota.py        │
+│  ├─ /health     run history    └─ tools/check_groq_quota.py              │
 │  ├─ /llm-usage  token/TPD                                          │
 │  └─ /feedback   👍/👎                                              │
 └────────────┬──────────────────────┬────────────────────────────────┘
@@ -233,5 +233,5 @@ All of these use `debug/utils.py` and write to the same `debug_artifacts/<key>/`
 
 - **`/health`** — per-source run success, last-run timestamp, event counts, recent failures.
 - **`/llm-usage`** — rolling 24h token usage per (key, model), budget cards with TPD %, Chart.js usage graph, recent call log, recent 429/error log. Authoritative for "is my daily token budget exhausted?" since Groq doesn't expose TPD in API headers.
-- **`tools/tools/check_groq_quota.py`** — per-minute TPM and daily RPD from Groq's API headers only. Does NOT show daily tokens. Useful for per-minute state but misleading for daily-budget debugging.
+- **`tools/check_groq_quota.py`** — per-minute TPM and daily RPD from Groq's API headers only. Does NOT show daily tokens. Useful for per-minute state but misleading for daily-budget debugging.
 - **console logs** — chunk failures (400s, "max completion tokens") are logged here but NOT written to the DB, so they're invisible on `/llm-usage`. A scrape that "succeeded" may have silently lost a chunk. Watch for `chunk X/Y failed`.

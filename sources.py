@@ -42,6 +42,12 @@ def _today():
 def _plus90():
     return (datetime.now() + timedelta(days=90)).strftime('%Y-%m-%d')
 
+
+def _today_long():
+    # CivicPlus date-filter format: "Mon D YYYY" with %20 between tokens
+    # (e.g. "May%2031%202026"). Used for mesa's Events-directory URL.
+    return datetime.now().strftime('%b %-d %Y').replace(' ', '%20')
+
 # ---------------------------------------------------------------------------
 # Site registry
 # ---------------------------------------------------------------------------
@@ -141,7 +147,7 @@ SITES = {
     ),
     'mesa': (
         'City of Mesa',
-        'https://www.mesaaz.gov/Events-directory?dlv_OC%20CL%20Public%20Events%20Listing=(=)(dd_OC%20Composite%20Date=Mar%2028%202026)(dd_OC%20Event%20Categories=Community%20Class%2FProgram|Groundbreaking-Ribbon%20Cutting|Special%20Event%2FFestival|Parks%2C%20Recreation%20and%20Community%20Facilities)(pageindex=1)',
+        'https://www.mesaaz.gov/Events-directory?dlv_OC%20CL%20Public%20Events%20Listing=(=)(dd_OC%20Composite%20Date={today_long})(dd_OC%20Event%20Categories=Community%20Class%2FProgram|Groundbreaking-Ribbon%20Cutting|Special%20Event%2FFestival|Parks%2C%20Recreation%20and%20Community%20Facilities)(pageindex=1)',
         True, 6, 5, 'pageindex=N pagination, no times on events',
         ('#ede9fe', '#7c3aed', '#4c1d95'),
         {
@@ -246,13 +252,6 @@ SITES = {
         'https://www.odyseaaquarium.com/events/',
         True, 10, 5, '',
         ('#e0f2fe', '#0284c7', '#0c4a6e'),
-        None,  # Default LLM pagination
-    ),
-    'hale_theatre': (
-        'Hale Theatre Arizona',
-        'https://www.haletheater.com/events',
-        True, 8, 5, 'Previously had parsing issues',
-        ('#fef9c3', '#ca8a04', '#713f12'),
         None,  # Default LLM pagination
     ),
     'az_mushroom': (
@@ -465,8 +464,6 @@ TRIM_PATTERNS = {
     # OdySea Aquarium — Cloudflare-blocked; no usable artifact, no trim possible
     'odysea':              None,
 
-    # Hale Theatre — Selenium timeout; no usable artifact, no trim possible
-    'hale_theatre':        None,
 
     # Arizona Mushroom Society — nav menu (duplicated) + login form before events;
     # tail trim drops the long "Past events" archive (~330 lines of historical events)

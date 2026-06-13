@@ -18,7 +18,7 @@ Run scoring separately after scraping:
 
 import sys, time, re
 from datetime import datetime, timedelta, date as date_type
-from database.models import Session, Event, ScraperRun
+from database.models import Session, Event, ScraperRun, utcnow
 from scrape.core import close_driver
 from scrape.pagination import scrape_with_pagination
 from sources import SITES
@@ -298,11 +298,13 @@ def main():
             # Resolve dynamic date placeholders (e.g. {today}, {plus90}).
             # Other placeholders like {month_name} belong to the pagination
             # engine and must pass through untouched.
-            from sources import _today, _plus90
+            from sources import _today, _plus90, _today_long
             class _PassThrough(dict):
                 def __missing__(self, key):
                     return '{' + key + '}'
-            url = url.format_map(_PassThrough(today=_today(), plus90=_plus90()))
+            url = url.format_map(_PassThrough(
+                today=_today(), plus90=_plus90(), today_long=_today_long(),
+            ))
             print(f"\n{'='*60}")
             print(f"SCRAPING: {name}")
             if note:
@@ -322,7 +324,7 @@ def main():
 
             session.add(ScraperRun(
                 source=key,
-                run_timestamp=datetime.utcnow(),
+                run_timestamp=utcnow(),
                 events_found=found,
                 events_added=added,
                 success=success,

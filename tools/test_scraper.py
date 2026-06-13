@@ -149,8 +149,13 @@ if __name__ == '__main__':
             # SITES tuple: (name, url, use_sel, wait, max_pages, note, color, pagination_cfg)
             entry = SITES[key]
             name, url, use_sel, wait, max_pages, note = entry[:6]
-            from sources import _today, _plus90
-            url = url.format(today=_today(), plus90=_plus90())
+            from sources import _today, _plus90, _today_long
+            class _PassThrough(dict):
+                def __missing__(self, key):
+                    return '{' + key + '}'
+            url = url.format_map(_PassThrough(
+                today=_today(), plus90=_plus90(), today_long=_today_long(),
+            ))
             run_test(name, url, use_sel, wait, max_pages, note, dump=dump, site_key=key)
             if key != keys[-1]:
                 time.sleep(3)

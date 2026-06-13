@@ -52,7 +52,7 @@ Set to `None` if the page opens directly with events (no boilerplate).
 - **Try not to invent new pagination patterns.** The 5 types (`None`/LLM, `multi_month`, `url_param`, `js_button`, `calendar_grid`) cover almost everything. Find the closest match before considering anything else.
 - **Check for platform patterns first.** Sites on the same backend often share the exact same config. Look at existing sources before starting from scratch.
 - **Always set a trim pattern.** Boilerplate before events wastes LLM tokens and can break local models. Even a `None` is better than a missing entry (it means you checked).
-- **Groq rate limits are a real constraint.** Default to conservative `max_pages` (3-5) unless we are running local LLMs. Don't add extra LLM calls to an API. Check the `/llm-usage` dashboard before bulk scraping -- it shows rolling 24h daily token (TPD) usage from the DB, which is the limit that actually matters. `tools/tools/check_groq_quota.py` only shows per-minute tokens and daily request counts from Groq's API headers -- Groq does NOT expose daily token usage in headers, so that script can look "fully reset" even when the daily token budget is exhausted.
+- **Groq rate limits are a real constraint.** Default to conservative `max_pages` (3-5) unless we are running local LLMs. Don't add extra LLM calls to an API. Check the `/llm-usage` dashboard before bulk scraping -- it shows rolling 24h daily token (TPD) usage from the DB, which is the limit that actually matters. `tools/check_groq_quota.py` only shows per-minute tokens and daily request counts from Groq's API headers -- Groq does NOT expose daily token usage in headers, so that script can look "fully reset" even when the daily token budget is exhausted.
 - **Bot detection is probabilistic.** A scraper failing once doesn't mean the config is wrong -- it might be Akamai/Cloudflare on a bad day. Try a longer `wait_secs` or fresh Selenium session before assuming the config is broken.
 - **Config-only is a solved problem.** The whole point is that new scrapers require nearly zero new Python code. If you find yourself writing a custom fetch or parse function, stop and reconsider.
 - **Chunk failures: salvage what we can, then continue.** When Groq's JSON-mode validator rejects a truncated response with `json_validate_failed` (400), `scrape/core.py:_recover_partial_json` trims the partial output back to the last complete event in the array so the chunk isn't a total loss. Both the original 400 and any chunks that still can't be salvaged are logged to `groq_rate_limit_events` and shown in the "LLM Errors" section of `/llm-usage`. A scrape that "succeeded with 10 events" may still have lost a chunk entirely (e.g. truncated before the first complete event) -- check the dashboard or console for "chunk X/Y failed" / "salvaged N events".
@@ -82,7 +82,7 @@ python score_events.py                   # Score unscored events (manual, not au
 python score_events.py --all             # Re-score all future events (after profile edits)
 python tools/test_scraper.py <key>       # Test without DB writes
 python tools/test_scraper.py <key> --dump # See raw HTML the LLM receives
-python tools/tools/check_groq_quota.py         # Check per-minute tokens & daily requests (NOT daily tokens -- see /llm-usage for that)
+python tools/check_groq_quota.py         # Check per-minute tokens & daily requests (NOT daily tokens -- see /llm-usage for that)
 
 # Debug pipeline (step-by-step inspection)
 python3 debug/fetch.py <key>             # Fetch raw HTML, check for bot-blocks

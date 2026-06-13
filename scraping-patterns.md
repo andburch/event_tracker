@@ -114,7 +114,7 @@ Most sites prepend nav menus, filter sidebars, category dropdowns, or cookie con
 
 ### How trim patterns were derived
 
-For each site (32 as of this writing), `debug/collect_artifacts.py` fetches and cleans page 1, saving to `debug_artifacts/<key>/page_1_cleaned.txt`. Each artifact was inspected manually to find the last line of boilerplate before the first event entry. Patterns were verified to appear exactly once in the artifact.
+For each site (31 as of this writing), `debug/collect_artifacts.py` fetches and cleans page 1, saving to `debug_artifacts/<key>/page_1_cleaned.txt`. Each artifact was inspected manually to find the last line of boilerplate before the first event entry. Patterns were verified to appear exactly once in the artifact.
 
 ### Impact by site
 
@@ -130,7 +130,7 @@ For each site (32 as of this writing), `debug/collect_artifacts.py` fetches and 
 | asu_kerr | 725 | 16% | Filter accordions (Category/Genre/Cost/Day/Time/Series) |
 | tca | 308 | 9% | CivicPlus calendar header (same pattern as gilbert) |
 
-Sites like `yuccatap`, `odysea`, `hale_theatre` have `None` (no boilerplate or bot-blocked).
+Sites like `yuccatap`, `odysea` have `None` (no boilerplate or bot-blocked).
 
 ### Rules for good patterns
 

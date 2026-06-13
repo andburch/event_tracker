@@ -17,8 +17,15 @@ that does `from database.models import Session` gets a ready-to-use factory.
 
 from sqlalchemy import create_engine, Column, Integer, String, DateTime, Float, Text, Boolean, text
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
-from datetime import datetime
+from datetime import datetime, timezone
 import config
+
+
+def utcnow():
+    # Naive UTC timestamp. Replaces deprecated utcnow() while keeping
+    # the rest of the codebase's naive-UTC convention (DateTime columns are
+    # naive; UI offsets to Phoenix via _PHOENIX_UTC_OFFSET).
+    return datetime.now(timezone.utc).replace(tzinfo=None)
 
 
 class Base(DeclarativeBase):
@@ -52,7 +59,7 @@ class Event(Base):
     price       = Column(String(100))                   # Free-text price string (e.g. '$10', 'Free')
     score       = Column(Float, nullable=True)          # LLM relevance score 0.0–1.0; NULL = unscored
     pinned      = Column(Boolean, default=False, nullable=False, server_default='0')  # User's short list
-    created_at  = Column(DateTime, default=datetime.utcnow)
+    created_at  = Column(DateTime, default=utcnow)
 
 
 # ---------------------------------------------------------------------------
@@ -80,7 +87,7 @@ class FeedbackHistory(Base):
     event_category    = Column(String(100))
     event_venue       = Column(String(300))
     interested        = Column(Boolean, nullable=False)         # True = liked, False = disliked
-    created_at        = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at        = Column(DateTime, default=utcnow, nullable=False)
 
 
 # ---------------------------------------------------------------------------
@@ -114,7 +121,7 @@ class UserProfile(Base):
     preference_summary            = Column(Text, default='')        # AI-generated
     feedback_count_at_last_summary = Column(Integer, default=0)
     last_summarized_at            = Column(DateTime, nullable=True)
-    updated_at                    = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at                    = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
 # ---------------------------------------------------------------------------
@@ -135,7 +142,7 @@ class PreferenceProfileHistory(Base):
     taste_prompt       = Column(Text)       # Snapshot of taste_prompt at generation time
     preference_summary = Column(Text)       # The summary that was replaced (the old one)
     feedback_count     = Column(Integer)    # How many feedbacks were incorporated
-    created_at         = Column(DateTime, default=datetime.utcnow, nullable=False)
+    created_at         = Column(DateTime, default=utcnow, nullable=False)
 
 
 # ---------------------------------------------------------------------------
@@ -159,7 +166,7 @@ class ScraperRun(Base):
 
     id               = Column(Integer, primary_key=True)
     source           = Column(String(100), nullable=False)
-    run_timestamp    = Column(DateTime, default=datetime.utcnow, nullable=False)
+    run_timestamp    = Column(DateTime, default=utcnow, nullable=False)
     events_found     = Column(Integer, nullable=False)
     events_added     = Column(Integer, nullable=False)
     success          = Column(Boolean, nullable=False)
@@ -190,7 +197,7 @@ class LLMCall(Base):
     __tablename__ = 'llm_calls'
 
     id                = Column(Integer, primary_key=True)
-    timestamp         = Column(DateTime, default=datetime.utcnow, nullable=False)
+    timestamp         = Column(DateTime, default=utcnow, nullable=False)
     provider          = Column(String(50),  nullable=False)   # 'groq' or 'ollama'
     model             = Column(String(200), nullable=False)
     call_type         = Column(String(50),  nullable=False)   # 'scraping', 'scoring', 'summary'
@@ -217,7 +224,7 @@ class GroqRateLimitEvent(Base):
     __tablename__ = 'groq_rate_limit_events'
 
     id              = Column(Integer, primary_key=True)
-    timestamp       = Column(DateTime, default=datetime.utcnow, nullable=False)
+    timestamp       = Column(DateTime, default=utcnow, nullable=False)
     api_key_label   = Column(String(50),  nullable=False)   # 'groq_key_1', 'groq_key_2', 'ollama'
     model           = Column(String(200), nullable=False)
     classified_as   = Column(String(20),  nullable=False)   # 'daily', 'tpm', 'error_400', 'error_503', 'error'
@@ -248,7 +255,7 @@ class GroqModelLimit(Base):
     rpd        = Column(Integer, nullable=True)   # requests per day
     tpm        = Column(Integer, nullable=True)   # tokens per minute
     tpd        = Column(Integer, nullable=True)   # tokens per day (null = no daily token cap)
-    updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)
 
 
 # ---------------------------------------------------------------------------
