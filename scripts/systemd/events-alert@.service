@@ -1,0 +1,7 @@
+[Unit]
+Description=Push alert when %i fails
+
+[Service]
+Type=oneshot
+User=ubuntu
+ExecStart=/home/ubuntu/event_tracker/scripts/notify.sh "Homeserver: %i failed" "Check: journalctl -u %i -n 50"

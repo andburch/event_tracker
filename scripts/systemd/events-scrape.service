@@ -1,4 +1,5 @@
 [Unit]
+OnFailure=events-alert@%n.service
 Description=Daily rotating scraper (1/7 of sources per day)
 After=network-online.target docker.service
 Wants=network-online.target

@@ -260,13 +260,22 @@ def _ask_llm_single(
             raise
         except openai.BadRequestError as e:
             body = getattr(e, 'body', None) or {}
-            failed_gen = body.get('error', {}).get('failed_generation') if isinstance(body, dict) else None
+            # openai SDK already unwraps {"error": {...}} into e.body; accept both shapes.
+            err_obj = body.get('error', body) if isinstance(body, dict) else {}
+            failed_gen = err_obj.get('failed_generation') if isinstance(err_obj, dict) else None
             recovered = _recover_partial_json(failed_gen) if failed_gen else None
             if recovered and recovered.get('events'):
                 n = len(recovered['events'])
                 log.warning(f"json_validate_failed: salvaged {n} events from partial response")
                 print(f"\n    json_validate_failed: salvaged {n} events from partial response")
                 return recovered
+            # gpt-oss models sometimes return an empty generation under JSON mode;
+            # that's transient, so retry it instead of losing the chunk.
+            code = err_obj.get('code') if isinstance(err_obj, dict) else None
+            if code == 'json_validate_failed' and not failed_gen and attempt < retries - 1:
+                log.warning("json_validate_failed with empty output, retrying chunk")
+                print("\n    empty JSON response, retrying...", end='  ')
+                continue
             raise
         except Exception as e:
             err = str(e)
@@ -311,6 +320,8 @@ def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = Non
     all_events  = []
     seen_titles = set()
     next_page_url = None
+    failed_chunks = 0
+    last_error = None
 
     for i, (chunk, is_last) in enumerate(chunks):
         if i > 0:
@@ -324,6 +335,8 @@ def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = Non
             # Common cause: "max completion tokens reached" on kimi/small models.
             log.warning(f"Chunk {i+1}/{n} failed: {e}")
             print(f"\n    chunk {i+1}/{n} failed (continuing): {str(e)[:80]}")
+            failed_chunks += 1
+            last_error = e
             continue
 
         for ev in result.get('events', []):
@@ -334,6 +347,11 @@ def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = Non
 
         if is_last:
             next_page_url = result.get('next_page_url')
+
+    # Partial failures are salvaged above, but if EVERY chunk failed the page
+    # produced nothing -- surface the error instead of reporting 0 events as success.
+    if failed_chunks == n:
+        raise RuntimeError(f"All {n} chunks failed; last error: {last_error}") from last_error
 
     return {'events': all_events, 'next_page_url': next_page_url}
 

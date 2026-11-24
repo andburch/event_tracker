@@ -10,7 +10,9 @@ case "$(date +%u)" in
   2) KEYS="chandler scottsdale gilbert phoenix mesa" ;;
   3) KEYS="chandler_lib tempe_lib azmnh dbg odysea" ;;
   4) KEYS="chandler_center mesa_arts scottsdale_arts asu_kerr tca" ;;
-  5) KEYS="downtown_tempe changing_hands sweet_basil farm_south_mtn summerwinds" ;;
+  # downtown_tempe and changing_hands are paused (not deleted): both block this
+  # server's IP (see CHANGELOG 2026-11-24). Add them back here to re-enable.
+  5) KEYS="sweet_basil farm_south_mtn summerwinds" ;;
   6) KEYS="az_mushroom az_worm_farm backcountry_hunters az_flycasters" ;;
   7) KEYS="rak evac" ;;
 esac

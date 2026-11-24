@@ -32,5 +32,9 @@ if __name__ == '__main__':
     else:
         print("Scoring unscored events only (pass --all to re-score everything)...")
 
-    run_batch_scoring(rescore_all=rescore_all)
+    result = run_batch_scoring(rescore_all=rescore_all)
     print("Done!")
+    # Fail loudly if there were events to score but every chunk failed.
+    if result and result[1] > 0 and result[0] == 0:
+        print("ERROR: no events could be scored")
+        sys.exit(1)

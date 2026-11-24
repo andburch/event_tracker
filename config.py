@@ -77,12 +77,14 @@ OLLAMA_MAX_TOKENS     = int(os.environ.get('OLLAMA_MAX_TOKENS', '16384'))  # Oll
 # The rate limiter tries each (key, model) combination in order:
 # all keys with model[0] first, then all keys with model[1], etc.
 # Add more models here to expand the combinatorial quota space.
-# llama-3.3-70b-versatile: Better output quality, 12k TPM, 100k TPD per key
-# llama-3.1-8b-instant: Faster, lower quality, 6k TPM, 500k TPD per key
-LLM_SCRAPING_MODELS = ['llama-3.3-70b-versatile', 'meta-llama/llama-4-scout-17b-16e-instruct']
+# Groq retired the llama models in Aug 2026 (404 model_not_found).
+# openai/gpt-oss-120b: best quality, 8k TPM, 200k TPD per key
+# openai/gpt-oss-20b: same limits, faster/lower quality
+# qwen/qwen3.8-27b: separate quota pool, last resort
+LLM_SCRAPING_MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b']
 
 # Ordered list of models to use for event scoring/recommendation.
-LLM_SCORING_MODELS = ['llama-3.3-70b-versatile']
+LLM_SCORING_MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b']
 
 
 # ---------------------------------------------------------------------------

@@ -20,7 +20,7 @@ import os, glob, logging
 
 log = logging.getLogger(__name__)
 
-ARTIFACT_ROOT = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'debug_artifacts')
+ARTIFACT_ROOT = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), 'debug_artifacts')
 
 
 def prepare_source_dir(key: str) -> str:

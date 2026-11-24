@@ -51,10 +51,7 @@ def _get_groq_client(label: str, api_key: str) -> openai.OpenAI:
         _clients[cache_key] = openai.OpenAI(
             base_url='https://api.groq.com/openai/v1',
             api_key=api_key,
-            http_client=httpx.Client(
-                transport=httpx.HTTPTransport(verify=False),
-                timeout=60,
-            ),
+            http_client=httpx.Client(timeout=60),
         )
     return _clients[cache_key]
 
@@ -126,7 +123,8 @@ def _call_llm_groq(messages, call_type, temperature, response_format) -> str:
     which combination to use each attempt.
     """
     from llm.rate_limiter import (
-        pick_key_and_model, record_rate_limit, all_groq_combinations_daily_exhausted
+        pick_key_and_model, record_rate_limit, all_groq_combinations_daily_exhausted,
+        mark_model_unavailable,
     )
 
     models = config.LLM_SCRAPING_MODELS if call_type == 'scraping' else config.LLM_SCORING_MODELS
@@ -176,6 +174,12 @@ def _call_llm_groq(messages, call_type, temperature, response_format) -> str:
                     return _call_llm_ollama(messages, call_type, temperature, response_format)
                 raise
             # Loop: pick_key_and_model() will choose a different combo or sleep
+        except openai.NotFoundError as e:
+            # 404 = model retired/renamed on Groq. Log it, drop the model, try the next one.
+            log_llm_error(model, label, e)
+            mark_model_unavailable(model)
+            if attempt == max_attempts - 1:
+                raise
         except Exception as e:
             log_llm_error(model, label, e)
             raise

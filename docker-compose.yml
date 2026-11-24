@@ -13,6 +13,8 @@ services:
     environment:
       - DATABASE_URL=sqlite:////data/events.db
       - OLLAMA_URL=http://ollama:11434
+      # Event.date values are Phoenix local time; make datetime.now() match.
+      - TZ=America/Phoenix
     restart: unless-stopped
     healthcheck:
       test: ["CMD", "curl", "-f", "http://localhost:5000/health"]
@@ -33,6 +35,8 @@ services:
     environment:
       - DATABASE_URL=sqlite:////data/events.db
       - OLLAMA_URL=http://ollama:11434
+      # Event.date values are Phoenix local time; make datetime.now() match.
+      - TZ=America/Phoenix
 
   ollama:
     image: ollama/ollama

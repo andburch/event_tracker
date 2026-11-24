@@ -692,11 +692,17 @@ def pin():
         session.close()
 
 
+_scoring_proc = None  # per gunicorn worker; poll() reaps the finished child
+
+
 @app.route('/score', methods=['POST'])
 def trigger_scoring():
     """Kick off batch scoring of unscored events in a background process."""
+    global _scoring_proc
     import subprocess
-    subprocess.Popen(
+    if _scoring_proc is not None and _scoring_proc.poll() is None:
+        return jsonify({'status': 'already_running'})
+    _scoring_proc = subprocess.Popen(
         [sys.executable, 'score_events.py'],
         cwd=os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
     )

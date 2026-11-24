@@ -207,6 +207,7 @@ def run_batch_scoring(session=None, rescore_all: bool = False, provider: str = N
 
         total_scored = sum(1 for ev in events if ev.id in all_scores)
         print(f"Scored {total_scored}/{len(events)} events")
+        return total_scored, len(events)
 
     finally:
         if own_session:

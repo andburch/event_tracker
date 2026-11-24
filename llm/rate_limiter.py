@@ -75,6 +75,7 @@ class GroqRateLimiter:
     def __init__(self):
         self._blocked_until: dict[tuple[str, str], datetime] = {}
         self._daily_exhausted: set[tuple[str, str]] = set()
+        self._unavailable_models: set[str] = set()  # models Groq answered 404 for (retired)
         self._limit_cache: dict[str, object] = {}  # model -> GroqModelLimit row
 
     # ------------------------------------------------------------------
@@ -153,6 +154,11 @@ class GroqRateLimiter:
             raise RuntimeError("No Groq API keys configured (set GROQ_API_KEY in .env)")
 
         combos = self._combinations(models)
+        if not combos:
+            raise RuntimeError(
+                f"None of the configured Groq models exist anymore ({', '.join(models)}). "
+                "Update LLM_SCRAPING_MODELS / LLM_SCORING_MODELS in config.py."
+            )
 
         usable = [(l, k, m) for l, k, m in combos if (l, m) not in self._daily_exhausted]
         if not usable:
@@ -179,6 +185,12 @@ class GroqRateLimiter:
             time.sleep(wait_secs + 1)
 
         return label, api_key, model
+
+    def mark_model_unavailable(self, model: str):
+        """Skip this model for the rest of the process (Groq returned 404 for it)."""
+        self._unavailable_models.add(model)
+        log.error(f"[rate_limiter] Model '{model}' not found on Groq (retired?) - skipping it")
+        print(f"\n  [rate_limiter] Model {model} not found on Groq - skipping it")
 
     def all_daily_exhausted(self, models: list[str]) -> bool:
         """True if every (key, model) combination is daily-exhausted."""
@@ -401,6 +413,8 @@ class GroqRateLimiter:
         keys = _available_keys()
         result = []
         for model in models:
+            if model in self._unavailable_models:
+                continue
             for label, api_key in keys:
                 result.append((label, api_key, model))
         return result
@@ -424,6 +438,11 @@ def pick_key_and_model(models: list[str]) -> tuple[str, str, str]:
 def record_rate_limit(label: str, model: str, error):
     """Record a 429 error for the given (key, model) pair."""
     _limiter.record_rate_limit(label, model, error)
+
+
+def mark_model_unavailable(model: str):
+    """Stop using a model that Groq no longer serves (404)."""
+    _limiter.mark_model_unavailable(model)
 
 
 def all_groq_combinations_daily_exhausted(models: list[str]) -> bool:

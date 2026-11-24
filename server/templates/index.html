@@ -246,8 +246,8 @@
             btn.style.pointerEvents = 'none';
             fetch('/score', { method: 'POST' })
                 .then(r => r.json())
-                .then(() => {
-                    btn.textContent = 'Scoring Started';
+                .then(d => {
+                    btn.textContent = d.status === 'already_running' ? 'Already Running' : 'Scoring Started';
                     setTimeout(() => {
                         btn.textContent = 'Score Events';
                         btn.style.opacity = '1';

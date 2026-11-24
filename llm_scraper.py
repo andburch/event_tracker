@@ -292,6 +292,7 @@ def main():
 
         total_found = 0
         total_added = 0
+        failed_sites = []
 
         for key in keys:
             name, url, use_sel, wait, max_pages, note, _color, pagination_config = SITES[key]
@@ -319,6 +320,8 @@ def main():
             duration     = time.time() - start_time
             total_found += found
             total_added += added
+            if not success:
+                failed_sites.append(key)
 
             print(f"  -> {added} new events added ({found} found) in {duration:.0f}s")
 
@@ -338,11 +341,19 @@ def main():
 
         print(f"\n{'='*60}")
         print(f"DONE: {total_added} new events added ({total_found} found across {len(keys)} sites)")
+        if failed_sites:
+            print(f"FAILED SITES: {', '.join(failed_sites)}")
         print(f"{'='*60}")
+
+        # Exit non-zero only for a systemic failure (every site errored, or the
+        # whole run found nothing) so one flaky site doesn't page every day.
+        exit_code = 1 if (len(failed_sites) == len(keys) or total_found == 0) else 0
 
     finally:
         close_driver()
         session.close()
+
+    sys.exit(exit_code)
 
 
 if __name__ == '__main__':

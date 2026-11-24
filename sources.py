@@ -109,16 +109,12 @@ SITES = {
     ),
     'scottsdale': (
         'City of Scottsdale',
-        'https://community.scottsdaleaz.gov/scottsdaleaz_main/calendar',
-        True, 8, 3, 'Localist FullCalendar, JS month nav',
+        # Calendar moved (by Nov 2026) to a BeWith/withapps.io iframe; the list
+        # view renders every upcoming event (~3 months, ~150K chars) on one page.
+        'https://main.withapps.io/event-grid?organizationId=16&communityId=190&isPrivate=0&isApprovedOnly=0&isRestrictedView=0&view=list',
+        True, 12, 1, 'BeWith event-grid iframe, list view, single page',
         ('#fee2e2', '#dc2626', '#7f1d1d'),
-        {   # Localist FullCalendar ignores URL params; must click the JS
-            # month-forward button.  DOM accumulates (~250K chars by page 3).
-            'type': 'js_button',
-            'button_selector': 'button.fc-next-button',
-            'disabled_check': 'simple',
-            'wait_after_click': 5,
-        },
+        None,  # Single page
     ),
     'gilbert': (
         'City of Gilbert',
@@ -234,7 +230,7 @@ SITES = {
     'downtown_tempe': (
         'Downtown Tempe',
         'https://www.downtowntempe.com/events',
-        False, 0, 5, 'static HTML -- no per-event URLs',
+        False, 0, 5, 'PAUSED: site 403s this server IP (Nov 2026)',
         ('#fef9c3', '#b45309', '#78350f'),
         None,  # Default LLM pagination
     ),
@@ -286,7 +282,7 @@ SITES = {
     'changing_hands': (
         'Changing Hands Bookstore',
         'https://www.changinghands.com/upcoming-events',
-        True, 15, 5, 'Drupal CMS, numbered page pagination',
+        True, 15, 5, 'PAUSED: Cloudflare challenge blocks this server (Nov 2026)',
         ('#fce4ec', '#c62828', '#4e0000'),
         {
             'type': 'url_param',
@@ -420,7 +416,7 @@ TRIM_PATTERNS = {
     'chandler':            "\nWindmills West Park\nWinn Park\nGo\n",
 
     # City of Scottsdale — filter sidebar with 70+ category options
-    'scottsdale':          "\nReset all filters\n",
+    'scottsdale':          "Scottsdale Public Meetings\nView All Events\n",
 
     # City of Gilbert — CivicPlus calendar; full day-of-week header row (appears once)
     'gilbert':             "\nSunday\nMonday\nTuesday\nWednesday\nThursday\nFriday\nSaturday\n",

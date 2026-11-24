@@ -68,10 +68,12 @@ def build_prompt(text: str, url: str, site_hint: str, is_last_chunk: bool) -> st
 
 def call_llm(prompt: str, provider: str, source_label: str) -> tuple[str | None, float, object | None]:
     """Call LLM and return (content, duration, usage). content=None on error."""
-    from llm.provider import get_client, _MODELS
+    import config
+    from llm.provider import get_client
     from scrape.core import EVENT_SCHEMA
 
-    model = _MODELS[(provider, 'scraping')]()
+    # Debug calls go straight to the client (no rate limiter), so use the first configured model.
+    model = config.OLLAMA_SCRAPING_MODEL if provider == 'ollama' else config.LLM_SCRAPING_MODELS[0]
     client = get_client(provider)
 
     print(f'  Calling {provider} / {model} ...')

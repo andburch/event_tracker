@@ -39,7 +39,7 @@ def check_quota(label: str, api_key: str, model: str):
         print(f"  {label}/{model}: not configured")
         return
 
-    resp = httpx.Client(transport=httpx.HTTPTransport(verify=False)).post(
+    resp = httpx.Client().post(
         'https://api.groq.com/openai/v1/chat/completions',
         headers={
             'Authorization': f'Bearer {api_key}',
