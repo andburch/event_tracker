@@ -3,7 +3,7 @@
 # Optional: NTFY_PRIORITY=low|default|high (default high).
 # Topic lives in ~/.config/homeserver-alerts/topic (subscribe to it in the ntfy app).
 TOPIC_FILE="/home/ubuntu/.config/homeserver-alerts/topic"
-[ -r "$TOPIC_FILE" ] || { echo "notify: no topic file, skipping" >&2; exit 0; }
+[ -r "$TOPIC_FILE" ] || { echo "notify: topic file $TOPIC_FILE missing/unreadable - alert NOT sent" >&2; exit 1; }
 PRIORITY="${NTFY_PRIORITY:-high}"
 TAGS=$([ "$PRIORITY" = high ] && echo warning || echo white_check_mark)
 curl -fsS --max-time 15 -H "Title: $1" -H "Priority: $PRIORITY" -H "Tags: $TAGS" \
