@@ -22,4 +22,6 @@ journalctl -u events-score.service -f
 
 `events-scrape.service` and `events-score.service` have `OnFailure=events-alert@%n.service`. When a run exits non-zero (every site failed, 0 events found, or nothing could be scored), `events-alert@.service` runs `scripts/notify.sh`. That posts a high-priority push to ntfy.sh. The topic name is in `~/.config/homeserver-alerts/topic` (chmod 600, not in git); subscribe to it in the ntfy phone app.
 
-Test: `./scripts/notify.sh "Test" "hello"`
+Test: `./scripts/notify.sh "Test" "hello"`. Set `NTFY_PRIORITY=low` (or `default`) for non-alert messages; it defaults to `high`.
+
+The same script is used by the server-wide health check (`~/maintenance/check-services-alert.sh`, a 6-hour systemd user timer), which also sends a weekly "all good" check-in.
