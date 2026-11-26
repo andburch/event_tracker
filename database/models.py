@@ -307,6 +307,7 @@ _GROQ_LIMITS_SEED = [
     ('openai/gpt-oss-20b',                       30,    1000,    8000,   200000),
     ('openai/gpt-oss-safeguard-20b',             30,    1000,    8000,   200000),
     ('qwen/qwen3-32b',                           60,    1000,    6000,   500000),
+    ('qwen/qwen3.8-27b',                         30,    1000,    8000,   200000),
     ('whisper-large-v3',                         20,    2000,    None,   None),
     ('whisper-large-v3-turbo',                   20,    2000,    None,   None),
 ]

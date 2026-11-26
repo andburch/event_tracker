@@ -77,14 +77,18 @@ OLLAMA_MAX_TOKENS     = int(os.environ.get('OLLAMA_MAX_TOKENS', '16384'))  # Oll
 # The rate limiter tries each (key, model) combination in order:
 # all keys with model[0] first, then all keys with model[1], etc.
 # Add more models here to expand the combinatorial quota space.
-# Groq retired the llama models in Aug 2026 (404 model_not_found).
-# openai/gpt-oss-120b: best quality, 8k TPM, 200k TPD per key
-# openai/gpt-oss-20b: same limits, faster/lower quality
-# qwen/qwen3.8-27b: separate quota pool, last resort
-LLM_SCRAPING_MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b', 'qwen/qwen3.8-27b']
+# Groq free models (Nov 2026). Tested on a real calendar page (48 events):
+#   gpt-oss-120b @ reasoning "low": 44/48  <- best
+#   qwen3.8-27b  @ reasoning "none": 24/48  <- fallback (separate quota pool)
+#   gpt-oss-20b: 0/48 -- dropped. Default reasoning on gpt-oss burns the whole
+#   output budget "thinking" and fails JSON mode, so effort is set explicitly.
+LLM_SCRAPING_MODELS = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b']
 
 # Ordered list of models to use for event scoring/recommendation.
-LLM_SCORING_MODELS = ['openai/gpt-oss-120b', 'openai/gpt-oss-20b']
+LLM_SCORING_MODELS = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b']
+
+# Groq `reasoning_effort` per model (models not listed: parameter not sent).
+LLM_REASONING_EFFORT = {'openai/gpt-oss-120b': 'low', 'openai/gpt-oss-20b': 'low', 'qwen/qwen3.8-27b': 'none'}
 
 
 # ---------------------------------------------------------------------------

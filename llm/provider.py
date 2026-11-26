@@ -143,6 +143,9 @@ def _call_llm_groq(messages, call_type, temperature, response_format) -> str:
 
         client = _get_groq_client(label, api_key)
         kwargs = dict(model=model, messages=messages, temperature=temperature)
+        effort = getattr(config, 'LLM_REASONING_EFFORT', {}).get(model)
+        if effort:
+            kwargs['reasoning_effort'] = effort
         if response_format:
             kwargs['response_format'] = response_format
 
