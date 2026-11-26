@@ -172,9 +172,9 @@
                 {% set pct = None %}
                 {% set color = 'none' %}
             {% endif %}
-            <div class="budget-card">
+            <div class="budget-card"{% if not b.configured %} style="opacity:0.55"{% endif %}>
                 <div class="title">{{ b.model }}</div>
-                <div class="key-label">{{ b.key }}</div>
+                <div class="key-label">{{ b.key }}{% if not b.configured %} · no longer used{% endif %}</div>
                 <div class="bar-track">
                     <div class="bar-fill {{ color }}" style="width: {{ [pct or 0, 100] | min }}%"></div>
                 </div>
@@ -272,7 +272,7 @@
                 {% for r in totals %}
                 {% set lim = limits.get(r.model) %}
                 <tr>
-                    <td class="model">{{ r.model }}</td>
+                    <td class="model">{{ r.model }}{% if r.model not in configured_models %} <span class="dim">(retired)</span>{% endif %}</td>
                     <td class="num">{{ '{:,}'.format(r.calls) }}</td>
                     <td class="num">{{ '{:,}'.format(r.tokens or 0) }}</td>
                     <td class="num">{{ '{:,.0f}'.format((r.tokens or 0) / r.calls) }}</td>
@@ -287,7 +287,7 @@
 
     <!-- LLM error audit log -->
     <div class="section">
-        <h2>LLM Errors (last 50 · rate limits + failures)</h2>
+        <h2>LLM Errors (last 7 days · newest 25)</h2>
         {% if rate_limit_events %}
         <div class="table-scroll">
         <table>
@@ -311,8 +311,10 @@
                         {{ e.classified_as }}
                     </td>
                     <td class="num">{% if e.retry_after_sec %}{{ e.retry_after_sec }}s{% else %}—{% endif %}</td>
-                    <td style="font-size:0.75rem; color:#6b7280; max-width:400px; word-break:break-all">
-                        {{ e.error_snippet or '—' }}
+                    {% set msg = (e.error_snippet or '—') %}
+                    {% set short = msg.split("'message': ")[-1].split(", 'type'")[0].strip('"\'{} ,') if "'message'" in msg else msg %}
+                    <td style="font-size:0.75rem; color:#6b7280; max-width:420px" title="{{ msg }}">
+                        {{ short[:140] }}{% if short|length > 140 %}…{% endif %}
                     </td>
                 </tr>
                 {% endfor %}
@@ -326,7 +328,7 @@
 
     <!-- Recent calls -->
     <div class="section">
-        <h2>Recent Calls (last 100)</h2>
+        <h2>Recent Calls (last 25)</h2>
         <div class="table-scroll">
         <table>
             <thead>

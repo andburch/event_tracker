@@ -33,6 +33,7 @@ from datetime import datetime, timedelta, date
 import calendar
 from sqlalchemy import func
 from sources import SITES, SOURCE_NAMES, SOURCE_COLORS, SOURCE_URLS
+import config
 
 app = Flask(__name__)
 
@@ -795,6 +796,15 @@ def llm_usage():
         for c in window_calls:
             calls_by_pair.setdefault((c.api_key_label, c.model), []).append(c)
 
+        # Always show every configured (key, model) pair, even with zero usage,
+        # so a fallback model's remaining budget is visible before it's needed.
+        from llm.rate_limiter import _available_keys
+        configured = list(dict.fromkeys(config.LLM_SCRAPING_MODELS + config.LLM_SCORING_MODELS))
+        seen = {(r.api_key_label, r.model) for r in budget_rows}
+        class _Zero:
+            def __init__(self, k, m): self.api_key_label, self.model, self.calls, self.tokens, self.avg_dur = k, m, 0, 0, 0
+        budget_rows = list(budget_rows) + [_Zero(k, m) for m in configured for k, _ in _available_keys() if (k, m) not in seen]
+
         budget = []
         for r in budget_rows:
             lim = limits.get(r.model)
@@ -836,8 +846,10 @@ def llm_usage():
                 'next_tick_at': next_tick_at,
                 'next_tick_tokens': next_tick_tokens,
                 'free_at': free_at,
+                'configured': r.model in configured,
             })
-        budget.sort(key=lambda x: (x['key'], x['model']))
+        order = {m: i for i, m in enumerate(configured)}
+        budget.sort(key=lambda x: (not x['configured'], order.get(x['model'], 99), x['key']))
 
         # --- Per-day usage for last 7 days ---
         # SQLite strftime to group by date. We shift the timestamp by -7h so
@@ -869,12 +881,13 @@ def llm_usage():
         chart_window_start = now - timedelta(days=8)  # extra day for rolling window warmup
         chart_rows = session.query(
             func.strftime('%Y-%m-%d %H:00', LLMCall.timestamp, '-7 hours').label('hour'),
+            LLMCall.api_key_label,
             LLMCall.model,
             func.sum(LLMCall.prompt_tokens + LLMCall.completion_tokens).label('tokens'),
         ).filter(
             LLMCall.timestamp >= chart_window_start,
             LLMCall.provider == 'groq',
-        ).group_by('hour', LLMCall.model).order_by('hour').all()
+        ).group_by('hour', LLMCall.api_key_label, LLMCall.model).order_by('hour').all()
 
         # Build full hourly timeline (last 7 days) in Phoenix local time so
         # labels and rolling-sum lookups match the -7h SQL buckets above.
@@ -887,15 +900,16 @@ def llm_usage():
             cursor += timedelta(hours=1)
 
         # Bucket raw hourly tokens per model (keys are Phoenix-local hours)
-        chart_models = sorted({r.model for r in chart_rows})
+        # One line per (key, model): Groq's daily token limit applies per key.
+        chart_models = sorted({(r.api_key_label, r.model) for r in chart_rows})
         hourly_tokens = {m: {} for m in chart_models}
         for r in chart_rows:
-            hourly_tokens[r.model][r.hour] = r.tokens or 0
+            hourly_tokens[(r.api_key_label, r.model)][r.hour] = r.tokens or 0
 
         # For each hour in timeline, compute rolling 24h sum / TPD * 100
         chart_datasets = []
         for m in chart_models:
-            lim = limits.get(m)
+            lim = limits.get(m[1])
             tpd = lim.tpd if lim and lim.tpd else None
             data = []
             for pt in timeline:
@@ -907,7 +921,7 @@ def llm_usage():
                     data.append(round(total / tpd * 100, 2))
                 else:
                     data.append(None)
-            chart_datasets.append({'label': m, 'data': data, 'tpd': tpd})
+            chart_datasets.append({'label': f"{m[1]} ({m[0]})", 'data': data, 'tpd': tpd})
 
         # Axis labels: "MM-DD HH" in Phoenix local time
         chart_labels = [pt.strftime('%m-%d %H') for pt in timeline]
@@ -915,7 +929,7 @@ def llm_usage():
         # --- Recent calls ---
         recent = session.query(LLMCall).filter(
             LLMCall.provider == 'groq'
-        ).order_by(LLMCall.id.desc()).limit(100).all()
+        ).order_by(LLMCall.id.desc()).limit(25).all()
 
         # --- All-time totals per model ---
         totals = session.query(
@@ -927,9 +941,9 @@ def llm_usage():
         ).group_by(LLMCall.model).order_by(func.count(LLMCall.id).desc()).all()
 
         # --- 429 audit log (most recent 50) ---
-        rate_limit_events = session.query(GroqRateLimitEvent).order_by(
-            GroqRateLimitEvent.id.desc()
-        ).limit(50).all()
+        rate_limit_events = session.query(GroqRateLimitEvent).filter(
+            GroqRateLimitEvent.timestamp >= week_ago
+        ).order_by(GroqRateLimitEvent.id.desc()).limit(25).all()
 
         return render_template(
             'llm_usage.html',
@@ -944,6 +958,7 @@ def llm_usage():
             chart_labels=chart_labels,
             chart_datasets=chart_datasets,
             rate_limit_events=rate_limit_events,
+            configured_models=configured,
         )
     finally:
         session.close()

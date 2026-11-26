@@ -168,7 +168,9 @@ def scrape_and_save(
             try:
                 end_dt = datetime.strptime(end_date_str.strip(), '%Y-%m-%d')
                 if event_dt < today and end_dt >= today:
-                    event_dt = today  # Currently running - use today
+                    # Currently running: show it today, keeping its time (or the
+                    # 12:34 "no time" sentinel) instead of a fake midnight start.
+                    event_dt = today.replace(hour=event_dt.hour, minute=event_dt.minute)
                     is_ongoing = True
             except ValueError:
                 pass
