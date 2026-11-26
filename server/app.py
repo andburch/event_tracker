@@ -166,6 +166,14 @@ def _ics_fold(line: str) -> str:
     return '\r\n'.join(chunks)
 
 
+@app.template_filter('short_error')
+def short_error(msg):
+    """Pull the human-readable 'message' out of a raw API error string."""
+    import re
+    m = re.search(r"""'message':\s*(["'])(.*?)\1\s*,\s*'type'""", msg or '')
+    return (m.group(2) if m else (msg or '—'))[:160]
+
+
 def events_to_ics(events, calendar_name: str = 'Phoenix Events') -> str:
     """
     Build a minimal RFC 5545 ICS calendar containing the given events.

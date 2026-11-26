@@ -312,9 +312,9 @@
                     </td>
                     <td class="num">{% if e.retry_after_sec %}{{ e.retry_after_sec }}s{% else %}—{% endif %}</td>
                     {% set msg = (e.error_snippet or '—') %}
-                    {% set short = msg.split("'message': ")[-1].split(", 'type'")[0].strip('"\'{} ,') if "'message'" in msg else msg %}
+                    {% set short = msg | short_error %}
                     <td style="font-size:0.75rem; color:#6b7280; max-width:420px" title="{{ msg }}">
-                        {{ short[:140] }}{% if short|length > 140 %}…{% endif %}
+                        {{ short }}
                     </td>
                 </tr>
                 {% endfor %}
