@@ -272,8 +272,10 @@ SITES = {
     ),
     'backcountry_hunters': (
         'Backcountry Hunters & Anglers - Arizona',
-        'https://www.backcountryhunters.org//events/pageid/eventlistview/categoryid/17',
-        True, 5, 3, 'Arizona chapter events',
+        # BHA moved events to myeventscenter.com (Nov 2026); the old URL now
+        # redirects to the national list. This page is Arizona-only.
+        'https://backcountryhunters.myeventscenter.com/browseByState/AZ/1',
+        True, 8, 2, 'Arizona events (myeventscenter.com state page)',
         ('#fef3c7', '#ca8a04', '#713f12'),
         None,  # Default LLM pagination
     ),
@@ -470,7 +472,7 @@ TRIM_PATTERNS = {
     'az_worm_farm':        "\nArizona Time (GMT-07:00)\nMore times\n",
 
     # Backcountry Hunters & Anglers — US state chapter list + interest filters
-    'backcountry_hunters': "\n-- Select Location --\n",
+    'backcountry_hunters': "Stewardship [https://backcountryhunters.myeventscenter.com/search/?query=Stewardship]\nPolicy [https://backcountryhunters.myeventscenter.com/search/?query=Policy]\n",
 
     # Changing Hands Bookstore — Drupal; 403 blocks headless Chrome currently
     'changing_hands':      None,
