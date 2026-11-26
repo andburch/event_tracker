@@ -1,5 +1,10 @@
 # Changelog
 
+## 2026-11-26 — Status page cleanup
+- `/health`: sources marked `PAUSED` in `sources.py` now appear under **Paused Scrapers** with their reason, instead of showing their last (pre-fix) error forever.
+- Deleted 2,240 stale `model_not_found` (retired llama) entries from `groq_rate_limit_events`, all from before the 2026-11-24 fix, so `/llm-usage` "LLM Errors" shows only real, current problems. DB backup taken first: `/data/events.db.bak-20261126` in the `events_data` volume.
+- Ran a catch-up scrape of the 13 active sources whose last run was still the pre-fix error.
+
 ## 2026-11-24 — Recovery after 3-month silent outage
 
 **What was wrong:** no new events since 2026-08-17. Groq retired both configured models (404 `model_not_found`). Multi-chunk pages reported "success, 0 events", scripts exited 0, and the health check only tested that port 5000 answered, so nothing flagged it.

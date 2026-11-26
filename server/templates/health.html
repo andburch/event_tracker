@@ -314,7 +314,7 @@
     </div>
 
     {% if disabled_scrapers %}
-    <h2>Disabled Scrapers</h2>
+    <h2>Paused Scrapers</h2>
     <div class="scraper-grid">
         {% for scraper in disabled_scrapers %}
             {% set stats = scraper_stats.get(scraper, {}) %}
@@ -322,7 +322,7 @@
         <div class="scraper-card disabled">
             <div class="card-header">
                 <div class="scraper-name">{{ source_names.get(scraper, scraper.replace('_',' ').title()) }}</div>
-                <span class="badge disabled">Disabled</span>
+                <span class="badge disabled">Paused</span>
             </div>
             <div class="meta-row">
                 <div class="meta-item">
@@ -340,9 +340,7 @@
                 </div>
                 {% endif %}
             </div>
-            {% if stats.last_error %}
-            <div class="error-msg">{{ stats.last_error[:200] }}</div>
-            {% endif %}
+            <div class="error-msg">{{ source_notes.get(scraper, '') }}</div>
         </div>
         {% endfor %}
     </div>

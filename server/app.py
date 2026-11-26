@@ -400,8 +400,13 @@ def health():
     """
     session = Session()
     try:
-        active_scrapers   = sorted(SITES.keys(), key=lambda k: SOURCE_NAMES.get(k, k).lower())
-        disabled_scrapers = []
+        # Sources whose note starts with "PAUSED" (see sources.py) are kept in
+        # config but not scheduled; show them under "Disabled" with the reason.
+        _paused = lambda k: (SITES[k][5] or '').upper().startswith('PAUSED')
+        _by_name = lambda k: SOURCE_NAMES.get(k, k).lower()
+        active_scrapers   = sorted([k for k in SITES if not _paused(k)], key=_by_name)
+        disabled_scrapers = sorted([k for k in SITES if _paused(k)], key=_by_name)
+        source_notes      = {k: SITES[k][5] for k in SITES}
 
         # Event counts per source (total and future)
         from sqlalchemy import case
@@ -474,6 +479,7 @@ def health():
             'health.html',
             active_scrapers=active_scrapers,
             disabled_scrapers=disabled_scrapers,
+            source_notes=source_notes,
             event_stats=event_stats,
             scraper_stats=scraper_stats,
             source_names=SOURCE_NAMES,
