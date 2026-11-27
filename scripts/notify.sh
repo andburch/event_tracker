@@ -12,8 +12,10 @@ case "$PRIORITY" in high|urgent) TAGS=warning ;; *) TAGS=white_check_mark ;; esa
 curl -fsS --max-time 15 -H "Title: $1" -H "Priority: $PRIORITY" -H "Tags: $TAGS" \
   -d "$2" "$URL" > /dev/null || exit 1
 if [ "$PRIORITY" = high ] || [ "$PRIORITY" = urgent ]; then
-  curl -fsS --max-time 15 -H "Title: $1 (repeat)" -H "Priority: $PRIORITY" -H "Tags: $TAGS" \
-    -H "Delay: 30m" -d "$2" "$URL" > /dev/null \
+  curl -fsS --max-time 15 -H "Title: $1 (2nd reminder)" -H "Priority: $PRIORITY" -H "Tags: $TAGS" \
+    -H "Delay: 30m" -d "SECOND REMINDER of an alert first sent 30 min ago ($(date '+%a %-I:%M %p')). It may have cleared since; a later \"all clear\" message would say so.
+
+$2" "$URL" > /dev/null \
     || echo "notify: repeat could not be scheduled (first alert WAS sent)" >&2
 fi
 exit 0
