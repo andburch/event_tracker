@@ -174,14 +174,14 @@ def _ics_fold(line: str) -> str:
 
 @app.template_filter('event_when')
 def event_when(dt):
-    """'Nov 28, 2026 at 04:00 PM', or 'Nov 28, 2026 · All day' for the 12:34 no-time sentinel."""
-    return dt.strftime('%b %d, %Y') + (' · All day' if _is_all_day(dt) else dt.strftime(' at %I:%M %p'))
+    """'Nov 28, 2026 at 04:00 PM', or 'Nov 28, 2026 · Time TBA' for the 12:34 no-time sentinel."""
+    return dt.strftime('%b %d, %Y') + (' · Time TBA' if _is_all_day(dt) else dt.strftime(' at %I:%M %p'))
 
 
 @app.template_filter('event_chip_time')
 def event_chip_time(dt):
-    """Calendar-grid prefix: '4:00PM' or '' for no-time events."""
-    return '' if _is_all_day(dt) else dt.strftime('%I:%M%p').lstrip('0')
+    """Calendar-grid prefix: '4:00PM' or 'TBA' for no-time events."""
+    return 'TBA' if _is_all_day(dt) else dt.strftime('%I:%M%p').lstrip('0')
 
 
 @app.template_filter('short_error')

@@ -64,7 +64,7 @@ Set to `None` if the page opens directly with events (no boilerplate).
 - **Chunk dedupe key is (title, date, time),** not title alone, so recurring events keep all their dates.
 - **Dates and times:**
   - `parse_date()` returns None for a missing or unparseable date, and the event is skipped (it used to be shown as "today").
-  - "12:00 AM" (a site placeholder) and times on runs ≥7 days long (exhibit opening hours) are stored as no-time.
+  - "12:00 AM" (a site placeholder) and times on runs ≥7 days long (exhibit opening hours) are stored as no-time (shown as "Time TBA").
   - Shrinking `LLM_CHUNK_SIZE` did NOT improve coverage in tests; runs vary a lot. Don't shrink it on a hunch.
 - **Failures must be loud.** `llm_scraper.py` exits 1 when every site in the run failed or the run found 0 events total (one flaky site does NOT fail the run). `score_events.py` exits 1 if there were events but none got scored. The systemd units have `OnFailure=events-alert@%n.service`, which runs `scripts/notify.sh` to push an ntfy alert (topic in `~/.config/homeserver-alerts/topic`, outside the repo). `~/check-services.sh` also fails if no scrape has added events in 3+ days.
 - **Timezone: containers run `TZ=America/Phoenix`** (set in `docker-compose.yml`). `Event.date` is Phoenix local time, so `datetime.now()` must be Phoenix too or tonight's events vanish after 5pm. DB timestamps (`created_at`, `run_timestamp`, LLM call logs) still use `utcnow()`, which is explicitly UTC and unaffected.
@@ -76,7 +76,7 @@ Set to `None` if the page opens directly with events (no boilerplate).
 
 | Thing | Why it exists |
 |---|---|
-| Sentinel time `12:34` | Marks events with no specified time; used throughout date logic. No event would REALLY have this as its time. The UI shows it as "All day" (Jinja filters `event_when` / `event_chip_time`), and "upcoming" cutoffs use midnight (`_today_start()`), never `now()`, so these events don't vanish at 12:34 PM. |
+| Sentinel time `12:34` | Marks events with no specified time; used throughout date logic. No event would REALLY have this as its time. The UI shows it as "Time TBA" (Jinja filters `event_when` / `event_chip_time`), and "upcoming" cutoffs use midnight (`_today_start()`), never `now()`, so these events don't vanish at 12:34 PM. |
 | All scraper config in `sources.py` | Avoids custom scraper code sprawl -- both `SITES` and `TRIM_PATTERNS` live here |
 | Groq + LLM model names | Set in `config.py`; don't hardcode model names elsewhere |
 | `TRIM_PATTERNS` in `sources.py` not a separate file | Keeps all per-site config in one place; easier to review when adding a site |

@@ -159,7 +159,7 @@ def scrape_and_save(
         if time_str and re.match(r'^\s*12:00\s*a\.?m', time_str, re.IGNORECASE):
             time_str = None
         # Multi-week runs (exhibits) list daily opening HOURS ("9:00 AM - 5:00 PM"), not a start time: store as
-        # "no time" (All day). A single time ("7:30 PM", e.g. a theater run's curtain) is kept.
+        # "no time" (shown as Time TBA). A single time ("7:30 PM", e.g. a theater run's curtain) is kept.
         try:
             if time_str and re.search(r'[-\u2013\u2014]|\bto\b', time_str) and ev.get('end_date') and ev.get('date') and \
                (datetime.strptime(ev['end_date'].strip()[:10], '%Y-%m-%d') - datetime.strptime(ev['date'].strip()[:10], '%Y-%m-%d')).days >= 7:
