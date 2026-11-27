@@ -36,7 +36,7 @@ from scrape.core import (
     fetch_requests, fetch_selenium, close_driver, get_driver,
     clean_html, ask_llm, _SPOOF_UA
 )
-from sources import TRIM_PATTERNS
+from sources import TRIM_PATTERNS, SITE_HINTS
 import logging
 
 log = logging.getLogger(__name__)
@@ -60,6 +60,9 @@ def apply_trim(text: str, site_key: str) -> str:
     before = len(text)
     if head and head in text:
         text = text[text.index(head) + len(head):]
+    elif head:
+        log.warning(f"[{site_key}] trim pattern not found (site layout changed?): LLM gets the full page")
+        print(f"    WARNING: trim pattern for {site_key} not found (layout changed?)")
     if tail and tail in text:
         text = text[:text.index(tail)]
 
@@ -397,7 +400,7 @@ def scrape_with_pagination(
                     log.warning(f"Artifact write failed: {e}")
 
                 result = ask_llm(text, current_url=current_url, site_hint=name,
-                                 provider=provider,
+                                 provider=provider, extra_hint=SITE_HINTS.get(key),
                                  artifact_prefix=f'{key}/page_{page_num}')
                 page_events = result.get('events', [])
                 next_url = result.get('next_page_url')
@@ -446,7 +449,7 @@ def scrape_with_pagination(
                     log.warning(f"Artifact write failed: {e}")
 
                 result = ask_llm(text, current_url=url, site_hint=name,
-                                 provider=provider,
+                                 provider=provider, extra_hint=SITE_HINTS.get(key),
                                  artifact_prefix=f'{key}/page_{artifact_page}')
                 page_events = result.get('events', [])
                 all_events.extend(page_events)

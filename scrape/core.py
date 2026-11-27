@@ -169,32 +169,9 @@ def _chunk_text(text: str):
 # LLM calls
 # ---------------------------------------------------------------------------
 
-def _ask_llm_single(
-    text: str,
-    current_url: str,
-    site_hint: str = '',
-    is_last_chunk: bool = True,
-    retries: int = None,
-    provider: str = None,
-    artifact_prefix: str = None,
-    chunk_num: int = 1,
-) -> dict:
-    """
-    Single LLM call for one chunk of page text.
-
-    Args:
-        text: Cleaned text chunk
-        current_url: URL of the page (for context in prompt)
-        site_hint: Short label like "Gilbert Gov"
-        is_last_chunk: If False, skip pagination search (links only in last chunk)
-        retries: Max retry attempts on 503/429 errors (defaults to config.LLM_MAX_RETRIES)
-
-    Returns:
-        Dict with 'events' list and 'next_page_url' (str or None)
-    """
-    if retries is None:
-        retries = config.LLM_MAX_RETRIES
-    
+def build_extraction_prompt(text: str, current_url: str, site_hint: str = '', is_last_chunk: bool = True,
+                            extra_hint: str = None) -> str:
+    """The exact extraction prompt. Single source of truth: debug/llm.py and tests call this too."""
     if is_last_chunk:
         pagination_instruction = (
             "2. Find the NEXT PAGE URL and put it in 'next_page_url'.\n"
@@ -208,7 +185,9 @@ def _ask_llm_single(
             "2. Set 'next_page_url' to null -- pagination is handled separately.\n\n"
         )
 
+    today = datetime.now()
     prompt = (
+        f"Today's date is {today:%Y-%m-%d} ({today:%A}).\n"
         f"The following is text scraped from an events page"
         f"{' (' + site_hint + ')' if site_hint else ''}.\n"
         f"Current page URL: {current_url}\n\n"
@@ -225,13 +204,50 @@ def _ask_llm_single(
         "   'Mar 20 @ 9:00 am - 5:00 pm' or '9:00 am - 4:00 pm' on the next line after the date.\n"
         "   Always capture the start time if present. Use 12-hour format e.g. '9:00 AM'.\n"
         "   CRITICAL: Date MUST be in YYYY-MM-DD format (e.g. '2026-03-22'), not text format. For date ranges, use the start date.\n"
-        "   CRITICAL: For calendar grid layouts, the month is shown at the top of the page. Day numbers in the grid belong to THAT month unless clearly labeled otherwise.\n\n"
+        "   CRITICAL: For calendar grid layouts, the month is shown at the top of the page. Day numbers in the grid belong to THAT month unless clearly labeled otherwise.\n"
+        "   CRITICAL: If a date is shown without a year, pick the year so the event (for a date range: its END date) is today or later; a range that is already running keeps its earlier start date. If a weekday is shown, the date must fall on that weekday.\n"
+        + (f"   SITE NOTE: {extra_hint}\n" if extra_hint else "")
+        + "\n"
         + pagination_instruction
         + "Respond with ONLY valid JSON in this exact format, no markdown, no explanation:\n"
         '{"events": [...], "next_page_url": "..." or null}\n'
         'Return your response as json only.\n\n'
         f"PAGE TEXT:\n{text}"
     )
+    return prompt
+
+
+def _ask_llm_single(
+    text: str,
+    current_url: str,
+    site_hint: str = '',
+    is_last_chunk: bool = True,
+    retries: int = None,
+    provider: str = None,
+    artifact_prefix: str = None,
+    chunk_num: int = 1,
+    extra_hint: str = None,
+    skip_models: tuple = (),
+) -> dict:
+    """
+    Single LLM call for one chunk of page text.
+    extra_hint: per-site note from sources.SITE_HINTS, appended to the instructions.
+    skip_models: models to avoid for this call (used to retry a suspicious empty result on the fallback model).
+
+    Args:
+        text: Cleaned text chunk
+        current_url: URL of the page (for context in prompt)
+        site_hint: Short label like "Gilbert Gov"
+        is_last_chunk: If False, skip pagination search (links only in last chunk)
+        retries: Max retry attempts on 503/429 errors (defaults to config.LLM_MAX_RETRIES)
+
+    Returns:
+        Dict with 'events' list and 'next_page_url' (str or None)
+    """
+    if retries is None:
+        retries = config.LLM_MAX_RETRIES
+    
+    prompt = build_extraction_prompt(text, current_url, site_hint, is_last_chunk, extra_hint)
 
     for attempt in range(retries):
         try:
@@ -241,6 +257,7 @@ def _ask_llm_single(
                 temperature=0.1,
                 response_format=EVENT_SCHEMA,
                 provider=provider,
+                skip_models=skip_models,
             )
             parsed = json.loads(content)
             # Save artifacts on success (must not break the scrape under any circumstance)
@@ -288,7 +305,28 @@ def _ask_llm_single(
                 raise
 
 
-def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = None, provider: str = None, artifact_prefix: str = None) -> dict:
+_DATEISH = re.compile(r'\b(?:jan|feb|mar|apr|may|jun|jul|aug|sep|oct|nov|dec)[a-z]*\.?\s+\d{1,2}\b|\b\d{1,2}/\d{1,2}\b|\b\d{4}-\d{2}-\d{2}\b|\b\d{1,2}(?::\d{2})?\s*[ap]\.?m\b', re.I)
+
+
+def _single_with_empty_retry(chunk, current_url, site_hint, **kw):
+    """One chunk; if the model returns NO events although the text is full of dates/times, retry once on the
+    fallback model. (Seen Nov 2026: gpt-oss returned [] instantly for a 21-event library page.) This adds an
+    LLM call only for suspicious empty results, so it stays within the 'don't add extra LLM calls' spirit."""
+    result = _ask_llm_single(chunk, current_url, site_hint, **kw)
+    if not result.get('events') and len(_DATEISH.findall(chunk)) >= 6 and len(config.LLM_SCRAPING_MODELS) > 1:
+        log.warning("0 events from a date-rich chunk; retrying on the fallback model")
+        print("\n    0 events from a date-rich chunk -> retrying on fallback model", end='  ')
+        try:
+            retry = _ask_llm_single(chunk, current_url, site_hint, skip_models=(config.LLM_SCRAPING_MODELS[0],), **kw)
+            if retry.get('events'):
+                return retry
+        except Exception as e:   # retry is best-effort: never turn a successful (empty) result into a failure
+            log.warning(f"fallback retry failed: {e}")
+    return result
+
+
+def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = None, provider: str = None,
+            artifact_prefix: str = None, extra_hint: str = None) -> dict:
     """
     Extract events from page text, chunking automatically for large pages.
 
@@ -308,9 +346,9 @@ def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = Non
         retries = config.LLM_MAX_RETRIES
     
     if len(text) <= config.LLM_CHUNK_SIZE:
-        return _ask_llm_single(text, current_url, site_hint,
-                               is_last_chunk=True, retries=retries, provider=provider,
-                               artifact_prefix=artifact_prefix, chunk_num=1)
+        return _single_with_empty_retry(text, current_url, site_hint,
+                                        is_last_chunk=True, retries=retries, provider=provider,
+                                        artifact_prefix=artifact_prefix, chunk_num=1, extra_hint=extra_hint)
 
     chunks = list(_chunk_text(text))
     n = len(chunks)
@@ -327,9 +365,9 @@ def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = Non
         if i > 0:
             time.sleep(config.LLM_CHUNK_DELAY)
         try:
-            result = _ask_llm_single(chunk, current_url, site_hint,
-                                     is_last_chunk=is_last, retries=retries, provider=provider,
-                                     artifact_prefix=artifact_prefix, chunk_num=i + 1)
+            result = _single_with_empty_retry(chunk, current_url, site_hint,
+                                              is_last_chunk=is_last, retries=retries, provider=provider,
+                                              artifact_prefix=artifact_prefix, chunk_num=i + 1, extra_hint=extra_hint)
         except Exception as e:
             # Don't let one failed chunk kill the entire page — log and continue.
             # Common cause: "max completion tokens reached" on kimi/small models.
@@ -340,10 +378,25 @@ def ask_llm(text: str, current_url: str, site_hint: str = '', retries: int = Non
             continue
 
         for ev in result.get('events', []):
-            key = (ev.get('title') or '').strip().lower()
-            if key and key not in seen_titles:
-                seen_titles.add(key)
-                all_events.append(ev)
+            # Dedupe across overlapping chunks by (title, date, time): recurring events keep their other
+            # dates and sessions. A copy WITHOUT a time is dropped if the same (title, date) has a timed copy,
+            # and a timed copy replaces an earlier untimed one (overlap often loses the time line).
+            title = (ev.get('title') or '').strip().lower()
+            if not title:
+                continue
+            day = (ev.get('date') or '').strip()
+            tm = re.sub(r'\s+', '', (ev.get('time') or '').lower()).lstrip('0')
+            key = (title, day, tm)
+            if key in seen_titles:
+                continue
+            if not tm and any(k[0] == title and k[1] == day for k in seen_titles):
+                continue
+            if tm and (title, day, '') in seen_titles:
+                seen_titles.discard((title, day, ''))
+                all_events = [e for e in all_events if not ((e.get('title') or '').strip().lower() == title
+                                                            and (e.get('date') or '').strip() == day and not e.get('time'))]
+            seen_titles.add(key)
+            all_events.append(ev)
 
         if is_last:
             next_page_url = result.get('next_page_url')

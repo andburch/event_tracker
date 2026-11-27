@@ -10,3 +10,4 @@ debug_artifacts/*
 !debug_artifacts/.gitkeep
 !debug_artifacts/README.md
 scrape/debug_artifacts/
+.claude/agent-memory/

@@ -419,3 +419,7 @@ When adding a new scraper, confirm:
 - [ ] Trim pattern is not month-specific or event-title-specific
 - [ ] `python tools/test_scraper.py <key>` finds events successfully
 - [ ] `note` field documents any quirks for future reference
+
+## Site hints (rarely needed)
+
+If the model makes the **same systematic mistake** on one site (for example, taking the wrong link because of the layout), add a one-line note for that site key to `SITE_HINTS` in `sources.py`. It's appended to the extraction prompt for that site only. Confirm the error in `debug_artifacts/<key>/` first, and keep it to one sentence.

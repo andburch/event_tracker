@@ -25,46 +25,10 @@ sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 from debug import utils as u
 
 
-def build_prompt(text: str, url: str, site_hint: str, is_last_chunk: bool) -> str:
-    """Reconstruct the exact prompt _ask_llm_single() would send."""
-    if is_last_chunk:
-        pagination_instruction = (
-            "2. Find the NEXT PAGE URL and put it in 'next_page_url'.\n"
-            "   Look for: numbered page links, 'Next' or '>' buttons, 'Load More' links,\n"
-            "   or URL patterns like ?page=2. Return the full absolute URL.\n"
-            "   If there is no next page, return null.\n"
-            "   Links appear as 'Link Text [/path/or/url]' -- use those URLs.\n\n"
-        )
-    else:
-        pagination_instruction = (
-            "2. Set 'next_page_url' to null -- pagination is handled separately.\n\n"
-        )
-
-    return (
-        f"The following is text scraped from an events page"
-        f"{' (' + site_hint + ')' if site_hint else ''}.\n"
-        f"Current page URL: {url}\n\n"
-        "1. Extract all events into the 'events' array.\n"
-        "   Each event must have these exact keys:\n"
-        "     title       (string)\n"
-        "     date        (string, MUST be in YYYY-MM-DD format, e.g. '2026-03-22'. If a date range like 'Oct 17, 2025 - Apr 25, 2026', use the START date)\n"
-        "     end_date    (string, YYYY-MM-DD format, or null. Only set if the event is a date range e.g. 'Oct 17, 2025 - Apr 25, 2026' -> '2026-04-25')\n"
-        "     time        (string e.g. '8:00 PM', or null. Convert formats like '1:30pm' to '1:30 PM')\n"
-        "     description (string or null)\n"
-        "     venue       (string or null)\n"
-        "     url         (full absolute URL to event detail page, or null. COPY the URL exactly as it appears in the text - do NOT paraphrase or modify it)\n"
-        "   IMPORTANT: Times often appear on a separate line after the date, or in formats like\n"
-        "   'Mar 20 @ 9:00 am - 5:00 pm' or '9:00 am - 4:00 pm' on the next line after the date.\n"
-        "   Always capture the start time if present. Use 12-hour format e.g. '9:00 AM'.\n"
-        "   CRITICAL: Date MUST be in YYYY-MM-DD format (e.g. '2026-03-22'), not text format. For date ranges, use the start date.\n"
-        "   CRITICAL: For calendar grid layouts, the month is shown at the top of the page. Day numbers in the grid belong to THAT month unless clearly labeled otherwise.\n\n"
-        + pagination_instruction
-        + "Respond with ONLY valid JSON in this exact format, no markdown, no explanation:\n"
-        '{"events": [...], "next_page_url": "..." or null}\n'
-        'Return your response as json only.\n\n'
-        f"PAGE TEXT:\n{text}"
-    )
-
+def build_prompt(text: str, url: str, site_hint: str, is_last_chunk: bool, extra_hint: str = None) -> str:
+    """The exact production prompt (scrape.core.build_extraction_prompt), so debug output can't drift."""
+    from scrape.core import build_extraction_prompt
+    return build_extraction_prompt(text, url, site_hint, is_last_chunk, extra_hint)
 
 def call_llm(prompt: str, provider: str, source_label: str) -> tuple[str | None, float, object | None]:
     """Call LLM and return (content, duration, usage). content=None on error."""
@@ -257,7 +221,8 @@ def run(key: str | None, source_label: str, text_file: str | None,
     # Build prompt
     entry_url = url or (u.get_source(key)[1] if key else 'https://unknown')
     site_hint = u.get_source(key)[0] if key else source_label
-    prompt = build_prompt(text, entry_url, site_hint, is_last_chunk)
+    from sources import SITE_HINTS
+    prompt = build_prompt(text, entry_url, site_hint, is_last_chunk, SITE_HINTS.get(key) if key else None)
 
     # Run for each provider
     for provider in providers:

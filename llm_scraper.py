@@ -33,7 +33,8 @@ def parse_date(date_str: str | None, time_str: str | None) -> datetime:
     Convert LLM-returned date/time strings to a datetime object.
     
     Expects dates in YYYY-MM-DD format as requested in the LLM prompt.
-    Falls back to today at 12:34 (sentinel time) if parsing fails.
+    Returns None if there is no parseable date (the caller skips the event).
+    No/unparseable time -> sentinel time 12:34 ("no time given").
     
     Args:
         date_str: Date string in YYYY-MM-DD format (or None)
@@ -43,20 +44,25 @@ def parse_date(date_str: str | None, time_str: str | None) -> datetime:
         datetime object with parsed date/time, or fallback with sentinel time
     """
     if not date_str:
-        return datetime.now().replace(hour=12, minute=34, second=0, microsecond=0)
+        return None   # no date: skip the event rather than show it as "today"
 
     date_str = date_str.strip()
+    if re.match(r'^\d{4}-\d{2}-\d{2}[T ]', date_str):   # "2026-12-01T19:00" -> date part only
+        date_str = date_str[:10]
     
     # Primary format: YYYY-MM-DD (as requested from LLM)
     try:
         if time_str:
             # Take only the start time from ranges like "1:30 PM - 3:00 PM"
-            time_str = time_str.split('-')[0].strip()
+            time_str = re.split(r'[-\u2013\u2014]', time_str)[0].strip()
             # Normalize various am/pm formats to "H:MM AM/PM"
             # Handles: "1:30pm", "1:30 p.m.", "1:30 P.M.", etc.
             time_str = re.sub(r'\s*p\.m\.', ' PM', time_str, flags=re.IGNORECASE)
             time_str = re.sub(r'\s*a\.m\.', ' AM', time_str, flags=re.IGNORECASE)
             time_str = re.sub(r'(\d)(am|pm)$', lambda m: m.group(1) + ' ' + m.group(2).upper(), time_str, flags=re.IGNORECASE)
+            m = re.search(r'(\d{1,2})(?::(\d{2}))?\s*([AP])\.?M\.?', time_str, re.IGNORECASE)
+            if m:   # e.g. "10:00 a.m. AZ Time", "7 PM", "7pm" -> "10:00 AM", "7:00 PM"
+                time_str = f"{m.group(1)}:{m.group(2) or '00'} {m.group(3).upper()}M"
             combined = f"{date_str} {time_str}"
             # Try with time first
             for time_fmt in ['%Y-%m-%d %I:%M %p', '%Y-%m-%d %I:%M%p', '%Y-%m-%d %H:%M']:
@@ -82,8 +88,8 @@ def parse_date(date_str: str | None, time_str: str | None) -> datetime:
         except ValueError:
             continue
 
-    # Ultimate fallback
-    return datetime.now().replace(hour=12, minute=34, second=0, microsecond=0)
+    # Unparseable date: skip the event (previously it was shown as today, which was misleading)
+    return None
 
 
 # ---------------------------------------------------------------------------
@@ -139,6 +145,7 @@ def scrape_and_save(
     events_added = 0
     skipped_past = 0
     skipped_no_title = 0
+    skipped_bad_date = 0
     skipped_duplicate = 0
     missing_url = 0
     missing_time = 0
@@ -147,10 +154,32 @@ def scrape_and_save(
     today = datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
 
     for ev in all_events:
-        event_dt = parse_date(ev.get('date'), ev.get('time'))
+        time_str = ev.get('time')
+        # "12:00 AM" is almost always a site placeholder (e.g. "12:00 am - 12:00 pm"), not a real start time
+        if time_str and re.match(r'^\s*12:00\s*a\.?m', time_str, re.IGNORECASE):
+            time_str = None
+        # Multi-week runs (exhibits) list daily opening HOURS ("9:00 AM - 5:00 PM"), not a start time: store as
+        # "no time" (All day). A single time ("7:30 PM", e.g. a theater run's curtain) is kept.
+        try:
+            if time_str and re.search(r'[-\u2013\u2014]|\bto\b', time_str) and ev.get('end_date') and ev.get('date') and \
+               (datetime.strptime(ev['end_date'].strip()[:10], '%Y-%m-%d') - datetime.strptime(ev['date'].strip()[:10], '%Y-%m-%d')).days >= 7:
+                time_str = None
+        except ValueError:
+            pass
+        event_dt = parse_date(ev.get('date'), time_str)
+        try:
+            if event_dt and ev.get('end_date'):
+                end_dt = datetime.strptime(ev['end_date'].strip()[:10], '%Y-%m-%d')
+                if end_dt < event_dt.replace(hour=0, minute=0) and event_dt.replace(year=event_dt.year - 1) <= end_dt + timedelta(days=1):
+                    event_dt = event_dt.replace(year=event_dt.year - 1)   # model moved a running range's start a year ahead
+        except ValueError:
+            pass
         title = (ev.get('title') or '').strip()
         if not title:
             skipped_no_title += 1
+            continue
+        if event_dt is None:
+            skipped_bad_date += 1
             continue
 
         # Track data quality
@@ -185,6 +214,18 @@ def scrape_and_save(
         month_counts[month_key] = month_counts.get(month_key, 0) + 1
 
         existing = session.query(Event).filter_by(title=title, date=event_dt).first()
+        if not existing:
+            day0 = event_dt.replace(hour=0, minute=0, second=0, microsecond=0)
+            same_day = session.query(Event).filter(Event.title == title, Event.date >= day0,
+                                                   Event.date < day0 + timedelta(days=1)).all()
+            no_time = (event_dt.hour, event_dt.minute) == (12, 34)
+            if no_time and same_day:
+                existing = same_day[0]                        # we already have it (with a time): skip
+            elif not no_time:
+                placeholder = next((e for e in same_day if (e.date.hour, e.date.minute) == (12, 34)), None)
+                if placeholder:                               # upgrade the no-time copy instead of adding
+                    placeholder.date = event_dt
+                    existing = placeholder
         if existing:
             skipped_duplicate += 1
         else:
@@ -222,6 +263,7 @@ def scrape_and_save(
             'past': skipped_past,
             'duplicate': skipped_duplicate,
             'no_title': skipped_no_title,
+            'bad_date': skipped_bad_date,
         }
         summary['month_distribution'] = dict(sorted(month_counts.items()))
         summary['data_quality'] = {

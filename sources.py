@@ -457,7 +457,7 @@ TRIM_PATTERNS = {
     'downtown_tempe':      "\nWalks / Runs\nTempe Beach Park\nASU\n",
 
     # Desert Botanical Garden — enormous cookie-consent block (~1000 lines before events)
-    'dbg':                 "\nUPCOMING EVENTS & EXHIBITS\n",
+    'dbg':                 "\nClose filter\nLimited-Time\nLimited-Time\n",   # page redesigned (Nov 2026)
 
     # OdySea Aquarium — Cloudflare-blocked; no usable artifact, no trim possible
     'odysea':              None,
@@ -508,3 +508,15 @@ TRIM_PATTERNS = {
 SOURCE_NAMES = {key: entry[0] for key, entry in SITES.items()}
 SOURCE_COLORS = {key: entry[6] for key, entry in SITES.items()}
 SOURCE_URLS = {key: entry[1].split('{')[0] for key, entry in SITES.items()}
+
+
+# ---------------------------------------------------------------------------
+# SITE_HINTS: optional per-site notes appended to the extraction prompt.
+# Use sparingly, only for a layout quirk the model gets wrong (keep it config, not code).
+# ---------------------------------------------------------------------------
+SITE_HINTS = {
+    # BeWith list view: each event's "More Info [url]" line comes BEFORE its title/date block.
+    # Without this the model took the NEXT event's link (92 of 101 links wrong, Nov 2026).
+    'scottsdale': ("Each event's 'More Info [url]' link is on the line ABOVE that event's month/day and title. "
+                   "Use the More Info link that comes immediately BEFORE the title, never the one after it."),
+}

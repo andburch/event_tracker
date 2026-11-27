@@ -85,6 +85,7 @@ def call_llm(
     temperature: float = 0.1,
     response_format: dict = None,
     provider: str = None,
+    skip_models: tuple = (),
 ) -> str:
     """
     Make a single LLM call.
@@ -110,12 +111,12 @@ def call_llm(
     provider = provider or config.LLM_PROVIDER
 
     if provider == 'groq':
-        return _call_llm_groq(messages, call_type, temperature, response_format)
+        return _call_llm_groq(messages, call_type, temperature, response_format, skip_models)
     else:
         return _call_llm_ollama(messages, call_type, temperature, response_format)
 
 
-def _call_llm_groq(messages, call_type, temperature, response_format) -> str:
+def _call_llm_groq(messages, call_type, temperature, response_format, skip_models=()) -> str:
     """
     Groq path: pick a (key, model) combination, call, handle 429 by switching.
 
@@ -128,6 +129,7 @@ def _call_llm_groq(messages, call_type, temperature, response_format) -> str:
     )
 
     models = config.LLM_SCRAPING_MODELS if call_type == 'scraping' else config.LLM_SCORING_MODELS
+    models = [m for m in models if m not in skip_models] or models
     max_attempts = len(models) * 2 + 1  # generous upper bound
 
     for attempt in range(max_attempts):

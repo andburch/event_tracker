@@ -163,7 +163,8 @@ def run_batch_scoring(session=None, rescore_all: bool = False, provider: str = N
             return
 
         # Build query: future events only, optionally filtered to unscored
-        query = session.query(Event).filter(Event.date >= datetime.now())
+        # midnight, not now(): today's no-time (12:34 sentinel) events must still get scored after 12:34 PM
+        query = session.query(Event).filter(Event.date >= datetime.now().replace(hour=0, minute=0, second=0, microsecond=0))
         if not rescore_all:
             query = query.filter(Event.score.is_(None))
 

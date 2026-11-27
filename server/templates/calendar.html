@@ -200,7 +200,7 @@
                          id="chip-{{ ev.id }}"
                          style="background:{{ colors[0] }}; border-color:{{ colors[1] }}; color:{{ colors[2] }};"
                          onclick="openEvent({{ ev.id }}, null)">
-                        {% if ev.pinned %}📌 {% endif %}{{ ev.date.strftime('%I:%M%p').lstrip('0') }} {{ ev.title[:26] }}{% if ev.title|length > 26 %}…{% endif %}
+                        {% if ev.pinned %}📌 {% endif %}{{ ev.date | event_chip_time }} {{ ev.title[:26] }}{% if ev.title|length > 26 %}…{% endif %}
                     </div>
                     {% endfor %}
                     {% if day_events|length > 3 %}
@@ -280,7 +280,7 @@
             {{ ev.id }}: {
                 id: {{ ev.id }},
                 title: {{ ev.title | tojson }},
-                date: {{ ev.date.strftime('%b %d, %Y at %I:%M %p') | tojson }},
+                date: {{ (ev.date | event_when) | tojson }},
                 sourceKey: {{ ev.source | tojson }},
                 source: {{ source_names.get(ev.source, ev.source.replace('_', ' ').title()) | tojson }},
                 venue: {{ ev.venue | tojson }},

@@ -126,7 +126,7 @@
             <div class="shortlist-event-body">
                 <div class="shortlist-event-title">{{ event.title }}</div>
                 <div class="shortlist-event-meta">
-                    <span class="date-badge">{{ event.date.strftime('%b %d, %Y at %I:%M %p') }}</span>
+                    <span class="date-badge">{{ event.date | event_when }}</span>
                     <span class="source">{{ source_names.get(event.source, event.source.replace('_', ' ').title()) }}</span>
                     {% if event.price %}<span class="price-badge">{{ event.price }}</span>{% endif %}
                     {% if event.venue %}<span style="font-size:13px;color:#888;">📍 {{ event.venue }}</span>{% endif %}
@@ -204,7 +204,7 @@
         <div class="event-meta">
             <span class="score">Match: {{ "%.0f"|format(score * 100) }}%</span>
             <span class="source">{{ source_names.get(event.source, event.source.replace('_', ' ').title()) }}</span>
-            <span class="date-badge">{{ event.date.strftime('%b %d, %Y at %I:%M %p') }}</span>
+            <span class="date-badge">{{ event.date | event_when }}</span>
             {% if event.price %}<span class="price-badge">{{ event.price }}</span>{% endif %}
         </div>
         <p>{{ event.description[:300] }}{% if event.description|length > 300 %}...{% endif %}</p>

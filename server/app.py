@@ -86,6 +86,12 @@ def phoenix_time_filter(dt: datetime, fmt: str = '%Y-%m-%d %H:%M:%S') -> str:
     return (dt - _PHOENIX_UTC_OFFSET).strftime(fmt)
 
 
+def _today_start() -> datetime:
+    """Midnight today (local Phoenix time). Use this, not now(), for "upcoming" cutoffs, so today's
+    no-time events (stored at 12:34) don't vanish at 12:34 PM."""
+    return datetime.now().replace(hour=0, minute=0, second=0, microsecond=0)
+
+
 def _is_all_day(dt: datetime) -> bool:
     """Events with the 12:34 sentinel time are treated as all-day."""
     return dt.hour == 12 and dt.minute == 34
@@ -164,6 +170,18 @@ def _ics_fold(line: str) -> str:
         chunks.append(' ' + rest[:74])
         rest = rest[74:]
     return '\r\n'.join(chunks)
+
+
+@app.template_filter('event_when')
+def event_when(dt):
+    """'Nov 28, 2026 at 04:00 PM', or 'Nov 28, 2026 · All day' for the 12:34 no-time sentinel."""
+    return dt.strftime('%b %d, %Y') + (' · All day' if _is_all_day(dt) else dt.strftime(' at %I:%M %p'))
+
+
+@app.template_filter('event_chip_time')
+def event_chip_time(dt):
+    """Calendar-grid prefix: '4:00PM' or '' for no-time events."""
+    return '' if _is_all_day(dt) else dt.strftime('%I:%M%p').lstrip('0')
 
 
 @app.template_filter('short_error')
@@ -422,7 +440,7 @@ def health():
         event_counts = session.query(
             Event.source,
             func.count(Event.id).label('total'),
-            func.sum(case((Event.date >= datetime.now(), 1), else_=0)).label('future'),
+            func.sum(case((Event.date >= _today_start(), 1), else_=0)).label('future'),
         ).group_by(Event.source).all()
 
         event_stats = {
@@ -435,7 +453,7 @@ def health():
         month_spread_rows = session.query(
             Event.source,
             func.count(func.distinct(func.strftime('%Y-%m', Event.date))).label('months'),
-        ).filter(Event.date >= datetime.now()).group_by(Event.source).all()
+        ).filter(Event.date >= _today_start()).group_by(Event.source).all()
         month_spread = {row.source: row.months for row in month_spread_rows}
 
         # All scraper runs, sorted newest first — no time cutoff so the
@@ -642,7 +660,7 @@ def shortlist_ics():
     try:
         pinned = session.query(Event).filter(
             Event.pinned == True,
-            Event.date >= datetime.now(),
+            Event.date >= _today_start(),   # midnight: keep today's no-time (12:34) events all day
         ).order_by(Event.date).all()
 
         body = events_to_ics(pinned, calendar_name='Phoenix Events Shortlist')

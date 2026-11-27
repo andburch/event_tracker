@@ -222,52 +222,22 @@ def check_empty_or_placeholder(text: str) -> list[str]:
 
 # ── Date-parse debugging ───────────────────────────────────────────────────────
 #
-# Mirrors the exact logic in llm_scraper.parse_date() so debug scripts show
-# which events would be silently dropped in production.
+# Uses llm_scraper.parse_date() itself so debug scripts show exactly what production does.
 
 def parse_date_debug(date_str: str | None, time_str: str | None = None) -> tuple[bool, str]:
     """
-    Try to parse a date string using the same logic as production.
+    Parse a date/time exactly as production does (calls llm_scraper.parse_date, so they can't drift).
 
-    Returns (success: bool, result_str: str).
-    success=False means the event would get the sentinel date (12:34) in production,
-    which means it would either appear with wrong date or be filtered as past.
+    Returns (success: bool, result_str: str). success=False means production SKIPS the event
+    (missing or unparseable date).
     """
-    from datetime import datetime
-    if not date_str:
-        return False, 'missing date — sentinel time will be used'
-
-    date_str = date_str.strip()
-
-    # Primary: YYYY-MM-DD
-    try:
-        if time_str:
-            time_str = time_str.split('-')[0].strip()
-            time_str = re.sub(r'\s*p\.m\.', ' PM', time_str, flags=re.IGNORECASE)
-            time_str = re.sub(r'\s*a\.m\.', ' AM', time_str, flags=re.IGNORECASE)
-            time_str = re.sub(r'(\d)(am|pm)$', lambda m: m.group(1) + ' ' + m.group(2).upper(), time_str, flags=re.IGNORECASE)
-            combined = f'{date_str} {time_str}'
-            for fmt in ['%Y-%m-%d %I:%M %p', '%Y-%m-%d %I:%M%p', '%Y-%m-%d %H:%M']:
-                try:
-                    dt = datetime.strptime(combined, fmt)
-                    return True, dt.strftime('%Y-%m-%d %H:%M')
-                except ValueError:
-                    continue
-        dt = datetime.strptime(date_str, '%Y-%m-%d').replace(hour=12, minute=34)
+    from llm_scraper import parse_date
+    dt = parse_date(date_str, time_str)
+    if dt is None:
+        return False, 'missing/unparseable date: event would be skipped'
+    if (dt.hour, dt.minute) == (12, 34):
         return True, dt.strftime('%Y-%m-%d 12:34 (no time)')
-    except ValueError:
-        pass
-
-    # Legacy formats
-    for fmt in ['%B %d, %Y', '%b %d, %Y', '%A, %B %d, %Y', '%A, %b %d, %Y', '%m/%d/%Y']:
-        try:
-            dt = datetime.strptime(date_str, fmt).replace(hour=12, minute=34)
-            return True, dt.strftime(f'%Y-%m-%d (legacy fmt {fmt})')
-        except ValueError:
-            continue
-
-    return False, f'UNPARSEABLE: "{date_str}" — event will use sentinel date in production'
-
+    return True, dt.strftime('%Y-%m-%d %H:%M')
 
 # ── Interactive prompt ─────────────────────────────────────────────────────────
 
