@@ -89,6 +89,10 @@ LLM_SCORING_MODELS = ['openai/gpt-oss-120b', 'qwen/qwen3.8-27b']
 
 # Groq `reasoning_effort` per model (models not listed: parameter not sent).
 LLM_REASONING_EFFORT = {'openai/gpt-oss-120b': 'low', 'openai/gpt-oss-20b': 'low', 'qwen/qwen3.8-27b': 'none'}
+# Output-token limit per Groq call. Unset, Groq's defaults (gpt-oss 3072, qwen 2048) cut off the
+# event list on dense pages (Gilbert, Nov 2026: replies stopped at exactly the default; chunks lost
+# most or all events). Free tier allows more; TPM is 8000, so keep prompt + output under that.
+LLM_MAX_OUTPUT_TOKENS = 8192
 
 
 # ---------------------------------------------------------------------------

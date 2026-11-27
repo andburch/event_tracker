@@ -186,11 +186,11 @@ class GroqRateLimiter:
 
         return label, api_key, model
 
-    def mark_model_unavailable(self, model: str):
-        """Skip this model for the rest of the process (Groq returned 404 for it)."""
+    def mark_model_unavailable(self, model: str, reason: str = "not found on Groq (retired?)"):
+        """Skip this model for the rest of the process (404, or a request it can never accept)."""
         self._unavailable_models.add(model)
-        log.error(f"[rate_limiter] Model '{model}' not found on Groq (retired?) - skipping it")
-        print(f"\n  [rate_limiter] Model {model} not found on Groq - skipping it")
+        log.error(f"[rate_limiter] Model '{model}' {reason} - skipping it")
+        print(f"\n  [rate_limiter] Model {model} {reason} - skipping it")
 
     def all_daily_exhausted(self, models: list[str]) -> bool:
         """True if every (key, model) combination is daily-exhausted."""
@@ -440,9 +440,9 @@ def record_rate_limit(label: str, model: str, error):
     _limiter.record_rate_limit(label, model, error)
 
 
-def mark_model_unavailable(model: str):
-    """Stop using a model that Groq no longer serves (404)."""
-    _limiter.mark_model_unavailable(model)
+def mark_model_unavailable(model: str, reason: str = "not found on Groq (retired?)"):
+    """Stop using a model for the rest of this run (404, or a request it can never accept)."""
+    _limiter.mark_model_unavailable(model, reason)
 
 
 def all_groq_combinations_daily_exhausted(models: list[str]) -> bool:

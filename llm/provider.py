@@ -150,6 +150,8 @@ def _call_llm_groq(messages, call_type, temperature, response_format, skip_model
             kwargs['reasoning_effort'] = effort
         if response_format:
             kwargs['response_format'] = response_format
+        if getattr(config, 'LLM_MAX_OUTPUT_TOKENS', None):
+            kwargs['max_completion_tokens'] = config.LLM_MAX_OUTPUT_TOKENS
 
         start = time.time()
         try:
@@ -168,6 +170,14 @@ def _call_llm_groq(messages, call_type, temperature, response_format, skip_model
             return response.choices[0].message.content
 
         except openai.RateLimitError as e:
+            if 'request too large' in str(e).lower():
+                # e.g. "Request too large ... OTPM: Limit 1000, Requested 2048": an output-per-minute cap
+                # below our max_completion_tokens. Waiting can't fix it, so stop using this model this run.
+                log_llm_error(model, label, e)
+                mark_model_unavailable(model, "rejects requests as too large (output-per-minute cap)")
+                if attempt == max_attempts - 1:
+                    raise
+                continue
             record_rate_limit(label, model, e)  # classifies TPM vs daily via message + DB
             log.warning(
                 f"[rate_limiter] 429 on {label}/{model} "

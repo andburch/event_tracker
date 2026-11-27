@@ -120,8 +120,8 @@ def _recover_partial_json(s: str) -> dict | None:
     Salvage a Groq `json_validate_failed` (400) response by trimming back to the
     last complete event in the events array.
 
-    Why: with no `max_tokens` set, the model occasionally hits its default cap
-    mid-string. Groq's JSON-mode validator rejects the truncated output with 400,
+    Why: a model can still hit its output limit (config.LLM_MAX_OUTPUT_TOKENS)
+    mid-string on a very dense chunk. Groq's JSON-mode validator rejects the truncated output with 400,
     but returns the partial text in `failed_generation`. Most chunks already
     contain several complete events before the cutoff; this recovers them so the
     chunk isn't a total loss.
