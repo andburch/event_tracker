@@ -1,0 +1,7 @@
+[Unit]
+Description=Weekly events digest (score, then push weekend top picks)
+
+[Service]
+Type=oneshot
+ExecStart=/home/ubuntu/event_tracker/scripts/weekly_digest.sh
+TimeoutStartSec=45min

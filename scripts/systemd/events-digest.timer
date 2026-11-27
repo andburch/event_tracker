@@ -1,0 +1,9 @@
+[Unit]
+Description=Weekly events digest, Thursdays 5pm Phoenix
+
+[Timer]
+OnCalendar=Thu *-*-* 17:00:00 America/Phoenix
+Persistent=true
+
+[Install]
+WantedBy=timers.target

@@ -25,3 +25,7 @@ journalctl -u events-score.service -f
 Test: `./scripts/notify.sh "Test" "hello"`. Set `NTFY_PRIORITY=low` (or `default`) for non-alert messages; it defaults to `high`.
 
 The same script is used by the server-wide health check (`~/maintenance/check-services-alert.sh`, a 6-hour systemd user timer), which also sends a weekly "all good" check-in.
+
+## Weekly digest (user unit)
+
+`events-digest.timer` runs as a **user** unit (`~/.config/systemd/user/`), every Thursday at 17:00 Phoenix time. It calls `scripts/weekly_digest.sh`, which first scores any unscored events, then pushes the weekend's (Fri–Sun) pinned and top-scored events via ntfy. Preview it with `docker exec event_tracker-web-1 python /app/scripts/weekly_digest.py`. Reinstall with `cp scripts/systemd/events-digest.* ~/.config/systemd/user/ && systemctl --user daemon-reload && systemctl --user enable --now events-digest.timer`.
