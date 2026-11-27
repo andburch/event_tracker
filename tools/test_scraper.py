@@ -81,6 +81,11 @@ def run_test(name, start_url, use_selenium=False, wait=5, max_pages=3,
             from sources import SITE_HINTS
             result      = ask_llm(text, current_url=current_url, site_hint=name, extra_hint=SITE_HINTS.get(site_key))
             page_events = result.get('events', [])
+            from sources import LINK_FROM_TEXT
+            if site_key in LINK_FROM_TEXT:
+                from scrape.relink import relink
+                c = LINK_FROM_TEXT[site_key]
+                print(f"    relinked {relink(page_events, text, c.get('position', 'before'), c.get('label'))} urls from page text")
             next_url    = result.get('next_page_url')
             all_events.extend(page_events)
             print(f"events={len(page_events)}  next={next_url or 'null'}")

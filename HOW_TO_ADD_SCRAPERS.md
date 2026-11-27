@@ -422,4 +422,6 @@ When adding a new scraper, confirm:
 
 ## Site hints (rarely needed)
 
-If the model makes the **same systematic mistake** on one site (for example, taking the wrong link because of the layout), add a one-line note for that site key to `SITE_HINTS` in `sources.py`. It's appended to the extraction prompt for that site only. Confirm the error in `debug_artifacts/<key>/` first, and keep it to one sentence.
+If the model makes the **same systematic mistake** on one site, add a one-line note for that site key to `SITE_HINTS` in `sources.py`. It's appended to the extraction prompt for that site only. Confirm the error in `debug_artifacts/<key>/` first, keep it to one sentence, and re-test to check it helps.
+
+If the links are wrong (the model attaches a neighbouring event's link), use `LINK_FROM_TEXT` in `sources.py` instead, e.g. `'scottsdale': {'position': 'before', 'label': 'More Info'}`. After extraction, each event's url is taken from the page text: the first link above (`before`) or below (`after`) its title line, optionally only on lines starting with `label`. No extra LLM calls.

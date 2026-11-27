@@ -515,8 +515,17 @@ SOURCE_URLS = {key: entry[1].split('{')[0] for key, entry in SITES.items()}
 # Use sparingly, only for a layout quirk the model gets wrong (keep it config, not code).
 # ---------------------------------------------------------------------------
 SITE_HINTS = {
-    # BeWith list view: each event's "More Info [url]" line comes BEFORE its title/date block.
-    # Without this the model took the NEXT event's link (92 of 101 links wrong, Nov 2026).
-    'scottsdale': ("Each event's 'More Info [url]' link is on the line ABOVE that event's month/day and title. "
-                   "Use the More Info link that comes immediately BEFORE the title, never the one after it."),
+}
+
+
+# ---------------------------------------------------------------------------
+# LINK_FROM_TEXT: per-site deterministic link repair (scrape/relink.py), no LLM calls.
+# For layouts where the model attaches a neighbouring event's link. Each event's url is taken
+# from the page text: the first link scanning from its title line in `position` direction,
+# optionally only on lines starting with `label`.
+# ---------------------------------------------------------------------------
+LINK_FROM_TEXT = {
+    # BeWith list view: "More Info [url]" sits ABOVE each title. Models took the next
+    # event's link ~90% of the time, even with a prompt hint (Nov 2026: 23/271 right; relink 269/271).
+    'scottsdale': {'position': 'before', 'label': 'More Info'},
 }

@@ -36,7 +36,8 @@ from scrape.core import (
     fetch_requests, fetch_selenium, close_driver, get_driver,
     clean_html, ask_llm, _SPOOF_UA
 )
-from sources import TRIM_PATTERNS, SITE_HINTS
+from sources import TRIM_PATTERNS, SITE_HINTS, LINK_FROM_TEXT
+from scrape.relink import relink
 import logging
 
 log = logging.getLogger(__name__)
@@ -403,6 +404,9 @@ def scrape_with_pagination(
                                  provider=provider, extra_hint=SITE_HINTS.get(key),
                                  artifact_prefix=f'{key}/page_{page_num}')
                 page_events = result.get('events', [])
+                if key in LINK_FROM_TEXT:
+                    n = relink(page_events, text, LINK_FROM_TEXT[key].get('position', 'before'), LINK_FROM_TEXT[key].get('label'))
+                    print(f"relinked {n} urls from page text  ", end='')
                 next_url = result.get('next_page_url')
                 all_events.extend(page_events)
                 print(f"events={len(page_events)}  next={next_url or 'null'}")
@@ -452,6 +456,9 @@ def scrape_with_pagination(
                                  provider=provider, extra_hint=SITE_HINTS.get(key),
                                  artifact_prefix=f'{key}/page_{artifact_page}')
                 page_events = result.get('events', [])
+                if key in LINK_FROM_TEXT:
+                    n = relink(page_events, text, LINK_FROM_TEXT[key].get('position', 'before'), LINK_FROM_TEXT[key].get('label'))
+                    print(f"relinked {n} urls from page text  ", end='')
                 all_events.extend(page_events)
                 print(f"events={len(page_events)}")
 
